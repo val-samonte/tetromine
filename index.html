@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#100e0c" />
+    <title>tetromine</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Sora:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <button id="open-settings" class="icon-btn sound-btn" type="button" aria-label="Settings" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" />
+      </svg>
+    </button>
+
+    <section data-screen="title" class="screen title-screen">
+      <div class="title-block">
+        <h1>tetromine</h1>
+        <div class="title-actions">
+          <button id="start-digging" type="button">Start Digging</button>
+        </div>
+      </div>
+    </section>
+
+    <section data-screen="sites" class="screen sheet" hidden>
+      <ul class="roster" id="site-list"></ul>
+    </section>
+
+    <section data-screen="craft" class="screen sheet" hidden>
+      <ul class="roster" id="axe-list"></ul>
+      <ul class="roster" id="axe-locked"></ul>
+    </section>
+
+    <section data-screen="items" class="screen sheet" hidden>
+      <h2 class="inventory-label">Pickaxes</h2>
+      <ul class="inventory" id="item-axes"></ul>
+      <h2 class="inventory-label">Resources</h2>
+      <ul class="inventory" id="item-ores"></ul>
+    </section>
+
+    <section data-screen="shaft" class="screen shaft-screen" hidden>
+      <div class="bench">
+        <div class="well">
+          <div class="shaft-wrap">
+            <canvas id="shaft" width="300" height="600"></canvas>
+          </div>
+        </div>
+        <aside class="side" aria-label="Pickaxe, next, ore, and site">
+          <div class="side-block">
+            <p class="shaft-axe" id="shaft-axe"></p>
+            <p class="strong-label">Strong against</p>
+            <ul class="strong" id="shaft-strong"></ul>
+          </div>
+          <div class="side-block">
+            <h2>Next</h2>
+            <canvas id="next" width="160" height="160"></canvas>
+          </div>
+          <ul class="pack" id="shaft-pack"></ul>
+          <h1 id="shaft-site" class="side-site">Stone Quarry</h1>
+        </aside>
+      </div>
+      <div class="touch" aria-label="Touch controls">
+        <button type="button" data-act="ccw">Spin back</button>
+        <button type="button" data-act="left">Left</button>
+        <button type="button" data-act="right">Right</button>
+        <button type="button" data-act="cw">Spin</button>
+        <button type="button" data-act="soft">Soft</button>
+        <button type="button" data-act="hard">Drop</button>
+      </div>
+    </section>
+
+    <div id="end-modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="end-title">
+        <h2 id="end-title">Stone Quarry</h2>
+        <button id="end-craft" class="solid-btn" type="button" hidden><span class="craft-wipe" aria-hidden="true"></span><span class="craft-label">New Craftable Pickaxe</span></button>
+        <button id="end-again" class="solid-btn" type="button">Try again</button>
+        <button id="end-back" class="text-btn" type="button">Back</button>
+      </div>
+    </div>
+
+    <div id="settings-modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <h2 id="settings-title">Settings</h2>
+        <button id="settings-sound" class="solid-btn" type="button" aria-pressed="true">Sound</button>
+        <button id="settings-erase" class="text-btn danger" type="button">Erase progress</button>
+        <button id="settings-close" class="text-btn" type="button">Close</button>
+      </div>
+    </div>
+
+    <div id="pick-modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pick-title">
+        <h2 id="pick-title"></h2>
+        <p class="info-label">Pickaxe</p>
+        <div id="pick-list"></div>
+        <button id="pick-cancel" class="text-btn" type="button">Back</button>
+      </div>
+    </div>
+
+    <div id="site-modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="site-info-title">
+        <h2 id="site-info-title"></h2>
+        <div id="site-info-body"></div>
+        <button id="site-info-close" class="text-btn" type="button">Close</button>
+      </div>
+    </div>
+
+    <nav class="dock" id="dock" hidden aria-label="Pages">
+      <button type="button" data-go="sites" data-dock="sites">Play</button>
+      <button type="button" data-go="craft" data-dock="craft">Craft</button>
+      <button type="button" data-go="items" data-dock="items">Items</button>
+    </nav>
+
+    <div id="curtain" class="curtain" hidden aria-hidden="true">
+      <div class="curtain-panel"></div>
+    </div>
+
+    <p id="live" class="live" aria-live="polite"></p>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
