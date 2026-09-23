@@ -104,7 +104,7 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   padding: 8vh 8vw;
   text-align: center;
   background:
-    radial-gradient(ellipse 42% 36% at 50% 18%, rgba(228, 177, 90, 0.22), transparent 68%),
+    radial-gradient(circle closest-corner at 50% 0%, rgba(228, 177, 90, 0.22), transparent 100%),
     var(--rock);
 }
 
@@ -789,8 +789,6 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
 }
 
 @media (max-width: 860px) {
-  .title-screen { align-items: flex-start; padding-top: 18vh; }
-
   .bar { align-items: center; }
   .bar h1 { font-size: 2.2rem; }
 
@@ -1275,11 +1273,6 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   }
 
   .shaft-screen .touch-drop:active { transform: scale(0.96); }
-}
-
-@media (max-height: 640px) {
-  .title-screen { padding-top: 12vh; padding-bottom: 6vh; }
-  .title-screen h1 { font-size: 3.2rem; }
 }
 
 .curtain {
