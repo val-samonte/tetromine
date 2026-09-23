@@ -212,6 +212,50 @@ export function createView(shaft, next) {
     const screen = bench?.parentElement;
     const side = bench?.querySelector(".side");
     if (!bench || !screen) return;
+    const portrait = window.matchMedia("(max-width: 760px) and (orientation: portrait)").matches;
+    if (portrait) {
+      if (side) {
+        side.style.marginTop = "";
+        side.style.height = "";
+        side.style.alignSelf = "";
+      }
+      const screenStyle = getComputedStyle(screen);
+      const padX = Number.parseFloat(screenStyle.paddingLeft) + Number.parseFloat(screenStyle.paddingRight);
+      const padY = Number.parseFloat(screenStyle.paddingTop) + Number.parseFloat(screenStyle.paddingBottom);
+      const rowGap = Number.parseFloat(screenStyle.rowGap) || 0;
+      const touch = screen.querySelector(".touch");
+      const ctrlMin = touch ? Number.parseFloat(getComputedStyle(touch).minHeight) || 0 : 0;
+      const title = screen.querySelector(".shaft-bar");
+      const titleH = title && getComputedStyle(title).display !== "contents" ? title.offsetHeight : (screen.querySelector("#shaft-site")?.offsetHeight || 0);
+      const availableHeight = screen.clientHeight - padY - titleH - rowGap * 2 - ctrlMin;
+      const colGap = Number.parseFloat(screenStyle.columnGap) || 0;
+      const minNext = Number.parseFloat(screenStyle.getPropertyValue("--next-min")) || 64;
+      const maxNext = Number.parseFloat(screenStyle.getPropertyValue("--next-max")) || 90;
+      const space = screen.clientWidth - padX - colGap * 3;
+      const idealBoard = availableHeight * (COLS / ROWS);
+      let nextWidth = space - idealBoard;
+      if (nextWidth > maxNext) nextWidth = maxNext;
+      if (nextWidth < minNext) nextWidth = minNext;
+      screen.style.setProperty("--next-size", `${Math.round(nextWidth)}px`);
+      const availableWidth = space - nextWidth;
+      if (availableHeight < 80 || availableWidth < 80) return;
+      let height = availableHeight;
+      let width = height * (COLS / ROWS);
+      if (width > availableWidth) {
+        width = availableWidth;
+        height = width * (ROWS / COLS);
+      }
+      wrap.style.width = `${Math.floor(width)}px`;
+      wrap.style.height = `${Math.floor(height)}px`;
+      const pack = screen.querySelector("#shaft-pack");
+      if (pack) {
+        const top = Math.max(0, Math.floor(height) - pack.offsetHeight);
+        screen.style.setProperty("--pack-top", `${top}px`);
+      }
+      return;
+    }
+    screen.style.removeProperty("--pack-top");
+    screen.style.removeProperty("--next-size");
     const extras = [...well.children].filter((node) => node !== wrap);
     const extraHeight = extras.reduce((sum, node) => sum + node.offsetHeight, 0) + 16;
     const availableHeight = bench.clientHeight - extraHeight;

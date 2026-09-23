@@ -50,6 +50,7 @@ const equipAskModal = document.querySelector("#equip-ask-modal");
 const unlockAskModal = document.querySelector("#unlock-ask-modal");
 const equipPromptModal = document.querySelector("#equip-prompt-modal");
 const forgeAskModal = document.querySelector("#forge-ask-modal");
+const leaveAskModal = document.querySelector("#leave-ask-modal");
 let equipPromptSeen = true;
 let equipPromptSiteId = null;
 let equipAskId = null;
@@ -229,6 +230,7 @@ function showScreen(next) {
   closeSiteInfo();
   closeUnlockAsk();
   closeForgeAsk();
+  closeLeaveAsk();
   if (next !== "craft") rainbowAxes = new Set();
   screen = next;
   document.querySelectorAll("[data-screen]").forEach((section) => {
@@ -313,6 +315,7 @@ function commit(next, options) {
       held.left = false;
       held.right = false;
       held.soft = false;
+      clearStick();
       hideEnd();
     }
     if (screen === "shaft" && (target === "sites" || target === "craft" || target === "items")) {
@@ -774,6 +777,15 @@ function closeForgeAsk() {
   forgeAskId = null;
 }
 
+function openLeaveAsk() {
+  leaveAskModal.hidden = false;
+  document.querySelector("#leave-ask-yes").focus();
+}
+
+function closeLeaveAsk() {
+  leaveAskModal.hidden = true;
+}
+
 function acceptForgeAsk() {
   const axeId = forgeAskId;
   closeForgeAsk();
@@ -824,13 +836,15 @@ function renderShaftHead() {
   const axe = axeById(state.ticket);
   document.querySelector("#shaft-axe").textContent = axe.name;
   const list = document.querySelector("#shaft-strong");
+  const label = list.previousElementSibling;
   list.replaceChildren();
   if (axe.wildcards.length === 0) {
-    const item = document.createElement("li");
-    item.textContent = "None";
-    list.append(item);
+    list.hidden = true;
+    if (label) label.hidden = true;
     return;
   }
+  list.hidden = false;
+  if (label) label.hidden = false;
   for (const id of axe.wildcards) {
     const ore = ORES.find((item) => item.id === id);
     const item = document.createElement("li");
@@ -842,6 +856,13 @@ function renderShaftHead() {
     item.append(swatch);
     list.append(item);
   }
+}
+
+function oreCountLabel(amount) {
+  const portrait = window.matchMedia("(max-width: 760px) and (orientation: portrait)").matches;
+  if (!portrait || amount < 1000) return String(amount);
+  const scaled = Math.round(amount / 100) / 10;
+  return `${Number.isInteger(scaled) ? scaled : scaled.toFixed(1)}k`;
 }
 
 function renderShaftPack() {
@@ -860,16 +881,20 @@ function renderShaftPack() {
     const qty = document.createElement("span");
     qty.className = "qty";
     qty.dataset.ore = ore.id;
-    qty.textContent = String(progress.ore[ore.id]);
+    qty.textContent = oreCountLabel(progress.ore[ore.id]);
     lead.append(swatch, name);
     item.append(lead, qty);
+    item.setAttribute("aria-label", `${ore.name} ${progress.ore[ore.id]}`);
     list.append(item);
   }
 }
 
 function syncShaft() {
   for (const qty of document.querySelectorAll("#shaft-pack [data-ore]")) {
-    qty.textContent = String(progress.ore[qty.dataset.ore]);
+    const amount = progress.ore[qty.dataset.ore];
+    qty.textContent = oreCountLabel(amount);
+    const ore = ORES.find((item) => item.id === qty.dataset.ore);
+    if (ore) qty.closest("li")?.setAttribute("aria-label", `${ore.name} ${amount}`);
   }
 }
 
@@ -895,6 +920,7 @@ function renderRunResult() {
     item.append(lead, qty);
     list.append(item);
   }
+  document.querySelector("#end-result-label").hidden = list.childElementCount === 0;
 }
 
 function hideEnd() {
@@ -947,6 +973,7 @@ function leaveShaft() {
   held.left = false;
   held.right = false;
   held.soft = false;
+  clearStick();
   hideEnd();
   closeSettings();
   go("sites");
@@ -957,7 +984,7 @@ function pressHorizontal(direction) {
   horizontal = direction;
   dasTime = 0;
   arrTime = 0;
-  if (state?.status === "playing" && !settingsOpen) {
+  if (state?.status === "playing") {
     const result = queueAction(state, direction < 0 ? "left" : "right");
     if (result.accepted) audio.blip(740, 0.02);
   }
@@ -971,7 +998,7 @@ function releaseHorizontal(direction) {
 }
 
 function actOnce(action) {
-  if (!state || state.status !== "playing" || settingsOpen) return;
+  if (!state || state.status !== "playing") return;
   const result = queueAction(state, action);
   for (const event of result.events) handleEvent(event);
   if (!result.accepted) return;
@@ -1003,7 +1030,7 @@ function axeName(id) {
 }
 
 function updateHeld(dt) {
-  if (!state || state.status !== "playing" || settingsOpen) return;
+  if (!state || state.status !== "playing") return;
   if (horizontal !== 0 && (held.left || held.right)) {
     dasTime += dt;
     if (dasTime >= DAS) {
@@ -1109,6 +1136,7 @@ document.querySelector("#end-craft").addEventListener("click", () => {
   held.left = false;
   held.right = false;
   held.soft = false;
+  clearStick();
   hideEnd();
   closeSettings();
   go("craft");
@@ -1169,6 +1197,16 @@ document.querySelector("#site-info-close").addEventListener("click", closeSiteIn
 siteModal.addEventListener("click", (event) => {
   if (event.target === siteModal) closeSiteInfo();
 });
+document.querySelector("#shaft-leave").addEventListener("click", openLeaveAsk);
+document.querySelector("#leave-ask-yes").addEventListener("click", leaveShaft);
+document.querySelector("#leave-ask-no").addEventListener("click", closeLeaveAsk);
+leaveAskModal.addEventListener("click", (event) => {
+  if (event.target === leaveAskModal) closeLeaveAsk();
+});
+document.querySelector("#shaft-settings").addEventListener("click", () => {
+  audio.unlock();
+  openSettings();
+});
 document.querySelector("#open-settings").addEventListener("click", () => {
   audio.unlock();
   openSettings();
@@ -1184,37 +1222,83 @@ soundButton.addEventListener("click", () => {
 soundButton.setAttribute("aria-pressed", String(progress.sound));
 
 document.querySelectorAll(".touch button").forEach((button) => {
-  const action = button.dataset.act;
-  if (action === "left" || action === "right" || action === "soft") {
-    const release = () => {
-      if (action === "soft") held.soft = false;
-      else releaseHorizontal(action === "left" ? -1 : 1);
-    };
-    button.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      button.setPointerCapture(event.pointerId);
-      audio.unlock();
-      if (action === "soft") {
-        held.soft = true;
-        softTime = 45;
-      } else pressHorizontal(action === "left" ? -1 : 1);
-    });
-    button.addEventListener("pointerup", release);
-    button.addEventListener("pointercancel", release);
-  } else {
-    button.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      audio.unlock();
-      actOnce(action);
-    });
-  }
+  button.addEventListener("contextmenu", (event) => event.preventDefault());
+  button.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    audio.unlock();
+    actOnce(button.dataset.act);
+  });
 });
+
+const stick = document.querySelector(".touch-stick");
+const STICK_DEAD = 0.22;
+let stickDir = null;
+
+function clearStick() {
+  if (stickDir === "left") releaseHorizontal(-1);
+  else if (stickDir === "right") releaseHorizontal(1);
+  else if (stickDir === "soft") held.soft = false;
+  stickDir = null;
+  stick?.querySelectorAll(".on").forEach((part) => part.classList.remove("on"));
+}
+
+function dirFromStick(event) {
+  const rect = stick.getBoundingClientRect();
+  const lx = event.clientX - (rect.left + rect.width / 2);
+  const ly = event.clientY - (rect.top + rect.height / 2);
+  const radius = Math.min(rect.width, rect.height) / 2;
+  if (radius <= 0 || Math.hypot(lx, ly) < radius * STICK_DEAD) return null;
+  if (Math.abs(lx) >= Math.abs(ly)) return lx < 0 ? "left" : "right";
+  return ly < 0 ? "ccw" : "soft";
+}
+
+function applyStick(dir) {
+  if (dir === stickDir) return;
+  if (stickDir === "left") releaseHorizontal(-1);
+  else if (stickDir === "right") releaseHorizontal(1);
+  else if (stickDir === "soft") held.soft = false;
+  stickDir = dir;
+  stick.querySelectorAll("[data-dir]").forEach((part) => {
+    part.classList.toggle("on", part.dataset.dir === dir);
+  });
+  if (!dir) return;
+  audio.unlock();
+  if (dir === "left") pressHorizontal(-1);
+  else if (dir === "right") pressHorizontal(1);
+  else if (dir === "soft") {
+    held.soft = true;
+    softTime = 45;
+  } else actOnce("ccw");
+}
+
+if (stick) {
+  stick.addEventListener("contextmenu", (event) => event.preventDefault());
+  stick.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    stick.setPointerCapture(event.pointerId);
+    applyStick(dirFromStick(event));
+  });
+  stick.addEventListener("pointermove", (event) => {
+    if (!stick.hasPointerCapture(event.pointerId)) return;
+    event.preventDefault();
+    applyStick(dirFromStick(event));
+  });
+  const endStick = (event) => {
+    event.preventDefault();
+    if (stick.hasPointerCapture(event.pointerId)) stick.releasePointerCapture(event.pointerId);
+    applyStick(null);
+  };
+  stick.addEventListener("pointerup", endStick);
+  stick.addEventListener("pointercancel", endStick);
+  stick.addEventListener("lostpointercapture", () => applyStick(null));
+}
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     event.preventDefault();
     if (!equipPromptModal.hidden) acceptEquipPrompt();
     else if (!forgeAskModal.hidden) closeForgeAsk();
+    else if (!leaveAskModal.hidden) closeLeaveAsk();
     else if (!unlockAskModal.hidden) closeUnlockAsk();
     else if (!equipAskModal.hidden) closeEquipAsk();
     else if (!siteModal.hidden) closeSiteInfo();
@@ -1222,7 +1306,7 @@ document.addEventListener("keydown", (event) => {
     else if (!endModal.hidden) leaveShaft();
     return;
   }
-  if (settingsOpen || !endModal.hidden || !siteModal.hidden || !equipAskModal.hidden || !equipPromptModal.hidden || !unlockAskModal.hidden || !forgeAskModal.hidden) return;
+  if (settingsOpen || !endModal.hidden || !siteModal.hidden || !equipAskModal.hidden || !equipPromptModal.hidden || !unlockAskModal.hidden || !forgeAskModal.hidden || !leaveAskModal.hidden) return;
   if (event.target.closest("button")) return;
   if (screen !== "shaft" || !state) {
     if (screen === "title" && (event.key === "Enter" || event.key === " ")) {
@@ -1280,11 +1364,9 @@ function loop(now) {
     }
   }
   if (screen === "shaft" && state) {
-    if (!settingsOpen) {
-      const events = tick(state, dt);
-      for (const event of events) handleEvent(event);
-      updateHeld(dt);
-    }
+    const events = tick(state, dt);
+    for (const event of events) handleEvent(event);
+    updateHeld(dt);
     syncShaft();
     view.frame(state, dt);
   }
