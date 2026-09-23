@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+<rect width="300" height="300" fill="#0c0b09"/>
+<rect x="30" y="30" width="240" height="2" fill="#3a3228"/>
+<rect x="30" y="268" width="240" height="2" fill="#3a3228"/>
+<rect x="30" y="30" width="2" height="240" fill="#3a3228"/>
+<rect x="268" y="30" width="2" height="240" fill="#3a3228"/>
+<rect x="109" y="30" width="2" height="240" fill="#241f1a"/>
+<rect x="30" y="109" width="240" height="2" fill="#241f1a"/>
+<rect x="189" y="30" width="2" height="240" fill="#241f1a"/>
+<rect x="30" y="189" width="240" height="2" fill="#241f1a"/>
+<polygon points="114.8,34.8 185.2,34.8 150,70" fill="#3fafa4"/>
+<polygon points="114.8,34.8 114.8,105.2 150,70" fill="#2a8980"/>
+<polygon points="185.2,34.8 185.2,105.2 150,70" fill="#2a8980"/>
+<polygon points="114.8,105.2 185.2,105.2 150,70" fill="#14625c"/>
+<polygon points="194.8,34.8 265.20000000000005,34.8 230,70" fill="#e0703a"/>
+<polygon points="194.8,34.8 194.8,105.2 230,70" fill="#b55628"/>
+<polygon points="265.20000000000005,34.8 265.20000000000005,105.2 230,70" fill="#b55628"/>
+<polygon points="194.8,105.2 265.20000000000005,105.2 230,70" fill="#8a3c16"/>
+<polygon points="194.8,114.8 265.20000000000005,114.8 230,150" fill="#3a3f66"/>
+<polygon points="194.8,114.8 194.8,185.2 230,150" fill="#2a2e4d"/>
+<polygon points="265.20000000000005,114.8 265.20000000000005,185.2 230,150" fill="#2a2e4d"/>
+<polygon points="194.8,185.2 265.20000000000005,185.2 230,150" fill="#1a1d33"/>
+<polygon points="194.8,194.8 265.20000000000005,194.8 230,230" fill="#3fafa4"/>
+<polygon points="194.8,194.8 194.8,265.20000000000005 230,230" fill="#2a8980"/>
+<polygon points="265.20000000000005,194.8 265.20000000000005,265.20000000000005 230,230" fill="#2a8980"/>
+<polygon points="194.8,265.20000000000005 265.20000000000005,265.20000000000005 230,230" fill="#14625c"/>
+</svg>
