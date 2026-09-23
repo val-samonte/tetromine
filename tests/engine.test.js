@@ -29,7 +29,7 @@ test("every vein sums to 100 and the opening tables match the brief", () => {
   assert.equal(rollOre(PICKAXES[0].drops, () => 0.989), "stone");
   assert.equal(rollOre(PICKAXES[0].drops, () => 0.99), "coal");
   assert.deepEqual(PICKAXES[1].drops, { stone: 80, copper: 20 });
-  assert.deepEqual(PICKAXES[2].drops, { stone: 40, copper: 50, tin: 10 });
+  assert.deepEqual(PICKAXES[2].drops, { stone: 35, copper: 50, tin: 15 });
   assert.deepEqual(PICKAXES.find((axe) => axe.id === "bronze").drops, { stone: 12, copper: 35, tin: 23, iron: 30 });
   assert.deepEqual(PICKAXES.find((axe) => axe.id === "iron").drops, { stone: 30, copper: 10, tin: 30, coal: 30 });
   assert.deepEqual(PICKAXES.find((axe) => axe.id === "steel").drops, { stone: 8, copper: 14, tin: 14, iron: 24, coal: 25, silver: 15 });

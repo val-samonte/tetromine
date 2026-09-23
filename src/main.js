@@ -692,6 +692,11 @@ function sparePickaxes() {
   return PICKAXES.filter((axe) => axe.id !== "simple" && axe.id !== equipped && ticketsHeld(progress, axe.id) >= 1);
 }
 
+function noPickaxeEquipped() {
+  const equipped = progress.equipped || "simple";
+  return equipped === "simple" || ticketsHeld(progress, equipped) < 1;
+}
+
 function settleBrokenEquip() {
   const menu = screen === "sites" || screen === "craft" || screen === "items";
   if (!menu) return;
@@ -709,8 +714,7 @@ function needsEquipPrompt() {
 }
 
 function maybePromptEquip() {
-  const menu = screen === "sites" || screen === "craft" || screen === "items";
-  if (!menu || !needsEquipPrompt()) {
+  if (screen !== "sites" || !needsEquipPrompt()) {
     closeEquipPrompt();
     return;
   }
@@ -718,23 +722,39 @@ function maybePromptEquip() {
   openEquipPrompt(null);
 }
 
+function canCraftAny() {
+  return PICKAXES.some((axe) => canForge(progress, axe.id));
+}
+
 function openEquipPrompt(siteId) {
   equipPromptSeen = true;
   equipPromptSiteId = siteId;
-  document.querySelector("#equip-prompt-simple").hidden = !siteId;
+  const craft = document.querySelector("#equip-prompt-craft");
+  const items = document.querySelector("#equip-prompt-items");
+  const simple = document.querySelector("#equip-prompt-simple");
+  craft.hidden = !canCraftAny();
+  items.hidden = sparePickaxes().length === 0;
+  simple.hidden = !siteId;
   document.querySelector("#equip-prompt-note").hidden = !siteId;
   equipPromptModal.hidden = false;
-  document.querySelector("#equip-prompt-ok").focus();
+  (craft.hidden ? items.hidden ? simple : items : craft).focus();
 }
 
 function closeEquipPrompt() {
   equipPromptSiteId = null;
+  document.querySelector("#equip-prompt-craft").hidden = true;
+  document.querySelector("#equip-prompt-items").hidden = true;
   document.querySelector("#equip-prompt-simple").hidden = true;
   document.querySelector("#equip-prompt-note").hidden = true;
   equipPromptModal.hidden = true;
 }
 
-function acceptEquipPrompt() {
+function goEquipCraft() {
+  closeEquipPrompt();
+  if (screen !== "craft") go("craft");
+}
+
+function goEquipItems() {
   closeEquipPrompt();
   if (screen !== "items") go("items");
 }
@@ -746,20 +766,25 @@ function proceedWithSimple() {
   if (siteId) begin(siteId);
 }
 
-function openEquipAsk(axeId) {
+function openEquipAsk(axeId, bare = false) {
   equipAskId = axeId;
   const next = axeById(axeId);
   const current = axeById(progress.equipped || "simple");
   document.querySelector("#equip-ask-title").textContent = next.name;
-  document.querySelector("#equip-ask-copy").textContent = `Equip ${next.name}?`;
-  document.querySelector("#equip-ask-no").textContent = `Keep ${current.name}`;
+  document.querySelector("#equip-ask-copy").textContent = bare ? `Equip ${next.name} too?` : `Equip ${next.name}?`;
+  document.querySelector("#equip-ask-no").textContent = bare ? "Not now" : `Keep ${current.name}`;
   equipAskModal.hidden = false;
   document.querySelector("#equip-ask-yes").focus();
 }
 
 function closeEquipAsk() {
+  const enter = forgeThenEnter;
+  forgeThenEnter = false;
   equipAskModal.hidden = true;
   equipAskId = null;
+  if (!enter) return;
+  const site = activeSite();
+  if (site) begin(site.id);
 }
 
 function openForgeAsk(axeId) {
@@ -782,12 +807,24 @@ function openLeaveAsk() {
   document.querySelector("#leave-ask-yes").focus();
 }
 
+let forgeThenEnter = false;
+
+function offerForgedEquip(axeId, bare) {
+  const equipped = progress.equipped || "simple";
+  const higher = PICKAXES.findIndex((axe) => axe.id === axeId) > PICKAXES.findIndex((axe) => axe.id === equipped);
+  const unequipped = bare && axeId !== equipped;
+  if (!unequipped && !higher) return false;
+  openEquipAsk(axeId, unequipped);
+  return true;
+}
+
 function closeLeaveAsk() {
   leaveAskModal.hidden = true;
 }
 
 function acceptForgeAsk() {
   const axeId = forgeAskId;
+  const bare = noPickaxeEquipped();
   closeForgeAsk();
   if (!axeId || !forge(progress, axeId)) return;
   const axe = axeById(axeId);
@@ -795,6 +832,9 @@ function acceptForgeAsk() {
   audio.blip(494, 0.08);
   announce(`Forged ${axe.name}.`);
   const site = activeSite();
+  forgeThenEnter = Boolean(site);
+  if (offerForgedEquip(axeId, bare)) return;
+  forgeThenEnter = false;
   if (site) begin(site.id);
 }
 
@@ -1098,15 +1138,14 @@ for (const list of document.querySelectorAll("#axe-list, #axe-locked")) list.add
   if (!button || button.disabled) return;
   audio.unlock();
   const axeId = button.dataset.axe;
-  const equipped = progress.equipped || "simple";
-  const higher = PICKAXES.findIndex((axe) => axe.id === axeId) > PICKAXES.findIndex((axe) => axe.id === equipped);
+  const bare = noPickaxeEquipped();
   if (!forge(progress, axeId)) return;
   audio.blip(330, 0.06);
   audio.blip(494, 0.08);
   const axe = axeById(axeId);
   announce(`Forged ${axe.name}.`);
   renderCraft();
-  if (higher) openEquipAsk(axeId);
+  offerForgedEquip(axeId, bare);
 });
 
 document.querySelector("#settings-erase").addEventListener("click", () => {
@@ -1188,10 +1227,11 @@ document.querySelector("#equip-ask-no").addEventListener("click", closeEquipAsk)
 equipAskModal.addEventListener("click", (event) => {
   if (event.target === equipAskModal) closeEquipAsk();
 });
-document.querySelector("#equip-prompt-ok").addEventListener("click", acceptEquipPrompt);
+document.querySelector("#equip-prompt-craft").addEventListener("click", goEquipCraft);
+document.querySelector("#equip-prompt-items").addEventListener("click", goEquipItems);
 document.querySelector("#equip-prompt-simple").addEventListener("click", proceedWithSimple);
 equipPromptModal.addEventListener("click", (event) => {
-  if (event.target === equipPromptModal) acceptEquipPrompt();
+  if (event.target === equipPromptModal) closeEquipPrompt();
 });
 document.querySelector("#site-info-close").addEventListener("click", closeSiteInfo);
 siteModal.addEventListener("click", (event) => {
@@ -1296,7 +1336,7 @@ if (stick) {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     event.preventDefault();
-    if (!equipPromptModal.hidden) acceptEquipPrompt();
+    if (!equipPromptModal.hidden) closeEquipPrompt();
     else if (!forgeAskModal.hidden) closeForgeAsk();
     else if (!leaveAskModal.hidden) closeLeaveAsk();
     else if (!unlockAskModal.hidden) closeUnlockAsk();
