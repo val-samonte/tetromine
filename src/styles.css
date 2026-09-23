@@ -430,10 +430,25 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   line-height: 0.92;
 }
 
+.edge { display: contents; }
+
 .shaft-bar { display: contents; }
 
+.side-block:has(#shaft-axe) { order: 1; }
+.side-block:has(#next) { order: 2; }
+#shaft-pack { order: 3; }
+#shaft-site { order: 4; }
+
 #shaft-leave,
-#shaft-settings { display: none; }
+#shaft-settings {
+  position: fixed;
+  top: 16px;
+  z-index: 4;
+  display: grid;
+}
+
+#shaft-leave { left: 16px; }
+#shaft-settings { right: 16px; }
 
 .side-block {
   display: flex;
@@ -831,24 +846,39 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
     display: contents;
   }
 
-  .shaft-screen .shaft-bar {
+  .shaft-screen #shaft-leave,
+  .shaft-screen #shaft-settings {
+    position: static;
+    top: auto;
+    right: auto;
+    left: auto;
+    z-index: auto;
     display: grid;
-    grid-column: 1 / -1;
+  }
+
+  .shaft-screen #shaft-leave {
+    grid-column: 1;
     grid-row: 1;
-    grid-template-columns: 44px minmax(0, 1fr) 44px;
-    align-items: center;
-    gap: 0.35rem;
+    justify-self: start;
+    align-self: center;
+  }
+
+  .shaft-screen #shaft-settings {
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: end;
+    align-self: center;
   }
 
   .shaft-screen .side-site {
+    grid-column: 2 / 4;
+    grid-row: 1;
     margin: 0;
     text-align: center;
+    align-self: center;
     font-size: clamp(1.45rem, 8vw, 2rem);
     line-height: 0.92;
   }
-
-  .shaft-screen #shaft-leave,
-  .shaft-screen #shaft-settings { display: grid; }
 
   .shaft-screen .side-block:has(#next) {
     grid-column: 3;
@@ -1028,6 +1058,223 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   .touch-drop:active {
     transform: scale(0.96);
   }
+}
+
+/* Phone landscape: stage fills the height. Side columns lean into it,
+   and the controls sit in the bottom corners the way bomberdoods does
+   (160px pad, 16px inset, small button at the top-right of the right cluster). */
+@media (orientation: landscape) and (max-height: 500px) {
+  .shaft-screen {
+    position: relative;
+    --stick-size: 160px;
+    --plant-size: calc(var(--stick-size) * 104 / 160);
+    --line-size: calc(var(--stick-size) * 47 / 160);
+    align-items: stretch;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    overflow: hidden;
+  }
+
+  .shaft-screen .bench {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .shaft-screen .side { display: contents; }
+
+  .shaft-screen .edge {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+  }
+
+  .shaft-screen .edge-left {
+    grid-column: 1;
+    grid-row: 1;
+    align-items: flex-end;
+  }
+
+  .shaft-screen .edge-right {
+    grid-column: 3;
+    grid-row: 1;
+    align-items: flex-start;
+  }
+
+  .shaft-screen .well {
+    grid-column: 2;
+    grid-row: 1;
+    height: 100%;
+    width: max-content;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .shaft-screen #shaft-leave,
+  .shaft-screen #shaft-settings {
+    position: static;
+    top: auto;
+    right: auto;
+    left: auto;
+    z-index: auto;
+    display: grid;
+    flex: none;
+  }
+
+  .shaft-screen #shaft-leave {
+    order: -1;
+    align-self: flex-start;
+  }
+
+  .shaft-screen #shaft-settings {
+    order: -1;
+    align-self: flex-end;
+  }
+
+  .shaft-screen #shaft-site {
+    order: 0;
+    align-self: stretch;
+    width: 100%;
+    margin: 0;
+    text-align: right;
+    font-size: clamp(1.25rem, 6vh, 2rem);
+    line-height: 0.92;
+  }
+
+  .shaft-screen .side-block:has(#shaft-axe) {
+    order: 1;
+    align-self: flex-end;
+    align-items: flex-end;
+    width: 100%;
+    text-align: right;
+  }
+
+  .shaft-screen .shaft-axe { font-size: 1.15rem; }
+
+  .shaft-screen .strong-label { display: none; }
+
+  .shaft-screen .strong { justify-content: flex-end; }
+
+  .shaft-screen .side-block:has(#next) {
+    order: 0;
+    align-self: flex-start;
+    align-items: flex-start;
+  }
+
+  .shaft-screen .side-block:has(#next) h2 { display: none; }
+
+  .shaft-screen #next { width: min(72px, 100%); }
+
+  .shaft-screen #shaft-pack {
+    order: 1;
+    align-self: flex-start;
+    width: max-content;
+    max-width: 100%;
+    min-height: 0;
+    gap: 4px;
+    font-size: 0.82rem;
+  }
+
+  .shaft-screen .pack li {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .shaft-screen .touch {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    touch-action: none;
+  }
+
+  .shaft-screen .touch-stick,
+  .shaft-screen .touch-actions {
+    position: absolute;
+    top: auto;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    width: var(--stick-size);
+    height: var(--stick-size);
+  }
+
+  .shaft-screen .touch-stick {
+    left: max(16px, env(safe-area-inset-left));
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 2px solid #ffffff33;
+    background: #2a241cbb;
+    box-shadow: 0 4px 14px #00000055;
+    touch-action: none;
+    overflow: hidden;
+    pointer-events: auto;
+  }
+
+  .shaft-screen .touch-stick-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .shaft-screen .touch-stick-wedge { fill: transparent; }
+  .shaft-screen .touch-stick-wedge.on { fill: #e4b15a55; }
+
+  .shaft-screen .touch-stick-x {
+    stroke: #ffffff33;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .shaft-screen .touch-stick-icon {
+    fill: none;
+    stroke: #f3ead7cc;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .shaft-screen .touch-stick-icon.on { stroke: var(--brass-hot); }
+
+  .shaft-screen .touch-actions {
+    right: max(16px, env(safe-area-inset-right));
+  }
+
+  .shaft-screen .touch-actions button { pointer-events: auto; }
+
+  .shaft-screen .touch button.touch-spin {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: var(--plant-size);
+    height: var(--plant-size);
+    border-radius: 999px;
+    transform: translate(-50%, -50%);
+  }
+
+  .shaft-screen .touch button.touch-spin:active {
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+
+  .shaft-screen .touch button.touch-drop {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: auto;
+    left: auto;
+    width: var(--line-size);
+    height: var(--line-size);
+    border-radius: 999px;
+  }
+
+  .shaft-screen .touch-drop:active { transform: scale(0.96); }
 }
 
 @media (max-height: 640px) {

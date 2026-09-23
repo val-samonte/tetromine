@@ -48,24 +48,28 @@
           </div>
         </div>
         <aside class="side" aria-label="Pickaxe, next, ore, and site">
-          <div class="side-block">
-            <p class="shaft-axe" id="shaft-axe"></p>
-            <p class="strong-label">Strong against</p>
-            <ul class="strong" id="shaft-strong"></ul>
+          <div class="edge edge-left">
+            <div class="shaft-bar">
+              <button id="shaft-leave" class="icon-btn" type="button" aria-label="Leave">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-2" /><path d="M15 12H3M6 9 3 12l3 3" /></svg>
+              </button>
+              <h1 id="shaft-site" class="side-site">Stone Quarry</h1>
+            </div>
+            <div class="side-block">
+              <p class="shaft-axe" id="shaft-axe"></p>
+              <p class="strong-label">Strong against</p>
+              <ul class="strong" id="shaft-strong"></ul>
+            </div>
           </div>
-          <div class="side-block">
-            <h2>Next</h2>
-            <canvas id="next" width="160" height="160"></canvas>
-          </div>
-          <ul class="pack" id="shaft-pack"></ul>
-          <div class="shaft-bar">
-            <button id="shaft-leave" class="icon-btn" type="button" aria-label="Leave">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 7V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-2" /><path d="M15 12H3M6 9 3 12l3 3" /></svg>
-            </button>
-            <h1 id="shaft-site" class="side-site">Stone Quarry</h1>
+          <div class="edge edge-right">
             <button id="shaft-settings" class="icon-btn" type="button" aria-label="Settings">
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" /></svg>
             </button>
+            <div class="side-block">
+              <h2>Next</h2>
+              <canvas id="next" width="160" height="160"></canvas>
+            </div>
+            <ul class="pack" id="shaft-pack"></ul>
           </div>
         </aside>
       </div>

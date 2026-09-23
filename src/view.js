@@ -213,6 +213,38 @@ export function createView(shaft, next) {
     const side = bench?.querySelector(".side");
     if (!bench || !screen) return;
     const portrait = window.matchMedia("(max-width: 760px) and (orientation: portrait)").matches;
+    const phoneLandscape = window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches;
+    if (phoneLandscape) {
+      if (side) {
+        side.style.marginTop = "";
+        side.style.height = "";
+        side.style.alignSelf = "";
+      }
+      screen.style.removeProperty("--pack-top");
+      screen.style.removeProperty("--next-size");
+      const screenStyle = getComputedStyle(screen);
+      const padX = Number.parseFloat(screenStyle.paddingLeft) + Number.parseFloat(screenStyle.paddingRight);
+      const padY = Number.parseFloat(screenStyle.paddingTop) + Number.parseFloat(screenStyle.paddingBottom);
+      const gap = Number.parseFloat(getComputedStyle(bench).columnGap) || 0;
+      const availableHeight = screen.clientHeight - padY;
+      const availableWidth = screen.clientWidth - padX - gap * 2;
+      if (availableHeight < 80 || availableWidth < 80) return;
+      let height = availableHeight;
+      let width = height * (COLS / ROWS);
+      if (width > availableWidth) {
+        width = availableWidth;
+        height = width * (ROWS / COLS);
+      }
+      width = Math.floor(width);
+      height = Math.floor(height);
+      wrap.style.width = `${width}px`;
+      wrap.style.height = `${height}px`;
+      const sideRoom = Math.max(0, (availableWidth - width) / 2);
+      const stick = Math.min(160, Math.floor(sideRoom));
+      screen.style.setProperty("--stick-size", `${Math.max(96, stick)}px`);
+      return;
+    }
+    screen.style.removeProperty("--stick-size");
     if (portrait) {
       if (side) {
         side.style.marginTop = "";
