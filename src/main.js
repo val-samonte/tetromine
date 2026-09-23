@@ -3,21 +3,25 @@ import {
   ARR,
   DAS,
   ORES,
+  ORE_BY_ID,
   PICKAXES,
   axeById,
   costEntries,
   dropList,
   siteById,
   siteForTicket,
+  SITES,
 } from "./data.js";
 import {
-  axeChoices,
   canEnter,
   canForge,
+  canPayUnlock,
   createProgress,
   createState,
   enterSite,
+  equip,
   forge,
+  isUnlocked,
   loadProgress,
   ticketsHeld,
   openSites,
@@ -26,6 +30,7 @@ import {
   saveProgress,
   startShift,
   tick,
+  unlockSite,
 } from "./engine.js";
 import { createView } from "./view.js";
 import { runCurtain } from "./curtain.js";
@@ -41,7 +46,15 @@ const soundButton = document.querySelector("#settings-sound");
 const settingsModal = document.querySelector("#settings-modal");
 const endModal = document.querySelector("#end-modal");
 const siteModal = document.querySelector("#site-modal");
-const pickModal = document.querySelector("#pick-modal");
+const equipAskModal = document.querySelector("#equip-ask-modal");
+const unlockAskModal = document.querySelector("#unlock-ask-modal");
+const equipPromptModal = document.querySelector("#equip-prompt-modal");
+const forgeAskModal = document.querySelector("#forge-ask-modal");
+let equipPromptSeen = true;
+let equipPromptSiteId = null;
+let equipAskId = null;
+let unlockAskId = null;
+let forgeAskId = null;
 
 const RAINBOW = ["#ff0040", "#ff7a00", "#ffe600", "#00e676", "#00b0ff", "#7c4dff", "#ff4081"];
 const RAINBOW_MS = 100;
@@ -214,7 +227,8 @@ function syncRainbow() {
 
 function showScreen(next) {
   closeSiteInfo();
-  closePick();
+  closeUnlockAsk();
+  closeForgeAsk();
   if (next !== "craft") rainbowAxes = new Set();
   screen = next;
   document.querySelectorAll("[data-screen]").forEach((section) => {
@@ -234,6 +248,13 @@ function showScreen(next) {
   if (next === "items") renderItems();
   paintNav();
   syncRainbow();
+  settleBrokenEquip();
+  maybePromptEquip();
+  scrollTop();
+}
+
+function scrollTop() {
+  window.scrollTo(0, 0);
 }
 
 function focusScreen(next) {
@@ -294,6 +315,9 @@ function commit(next, options) {
       held.soft = false;
       hideEnd();
     }
+    if (screen === "shaft" && (target === "sites" || target === "craft" || target === "items")) {
+      equipPromptSeen = false;
+    }
     closeSettings();
     showScreen(target);
     if (historyMode === "push" && location.pathname !== url) history.pushState({ screen: target }, "", url);
@@ -302,13 +326,18 @@ function commit(next, options) {
 
   if (options.immediate) {
     apply();
+    scrollTop();
     focusScreen(target);
     return Promise.resolve();
   }
-  return runCurtain(apply).then(() => focusScreen(target));
+  return runCurtain(apply).then(() => {
+    scrollTop();
+    focusScreen(target);
+  });
 }
 
 function boot() {
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
   const route = routeFromPath(location.pathname);
   if (!route || route.screen === "shaft") {
     const fallback = route?.screen === "shaft" ? "sites" : "title";
@@ -325,21 +354,56 @@ function boot() {
 function renderItems() {
   const axes = document.querySelector("#item-axes");
   axes.replaceChildren();
-  for (const axe of PICKAXES) {
+  for (const axe of PICKAXES.toReversed()) {
     if (axe.id === "simple" || !progress.axes[axe.id]) continue;
     const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "item-axe";
+    button.dataset.equip = axe.id;
+    if (progress.equipped === axe.id) button.setAttribute("aria-current", "true");
+    const head = document.createElement("span");
+    head.className = "item-axe-name";
     const name = document.createElement("span");
     name.textContent = axe.name;
+    head.append(name);
+    if (progress.equipped === axe.id) {
+      const mark = document.createElement("span");
+      mark.className = "equipped";
+      mark.textContent = "Equipped";
+      head.append(mark);
+    }
     const qty = document.createElement("span");
     qty.className = "qty";
     qty.textContent = `x${progress.axes[axe.id]}`;
-    item.append(name, qty);
+    head.append(qty);
+    const strong = document.createElement("span");
+    strong.className = "item-strong";
+    const label = document.createElement("span");
+    label.className = "strong-label";
+    label.textContent = "Strong against";
+    const wild = document.createElement("span");
+    wild.className = "item-wild";
+    for (const id of axe.wildcards) {
+      const ore = ORE_BY_ID[id];
+      const bit = document.createElement("span");
+      const swatch = document.createElement("i");
+      swatch.className = "swatch";
+      swatch.style.setProperty("--swatch", ore.fill);
+      const oreName = document.createElement("span");
+      oreName.textContent = ore.name;
+      bit.append(swatch, oreName);
+      wild.append(bit);
+    }
+    strong.append(label, wild);
+    button.append(head, strong);
+    item.append(button);
     axes.append(item);
   }
 
   const ores = document.querySelector("#item-ores");
   ores.replaceChildren();
-  for (const ore of ORES) {
+  for (const ore of ORES.toReversed()) {
     if (!progress.ore[ore.id]) continue;
     const item = document.createElement("li");
     const swatch = document.createElement("i");
@@ -358,6 +422,9 @@ function renderItems() {
   ores.hidden = ores.childElementCount === 0;
   axes.previousElementSibling.hidden = axes.hidden;
   ores.previousElementSibling.hidden = ores.hidden;
+  const empty = axes.hidden && ores.hidden;
+  document.querySelector("#items-empty").hidden = !empty;
+  document.querySelector("[data-screen='items']").classList.toggle("items-blank", empty);
 }
 
 function veinBar(drops) {
@@ -389,10 +456,6 @@ function infoMark() {
   return svg;
 }
 
-function veinKey(drops) {
-  return ORES.map((ore) => drops[ore.id] ?? 0).join(",");
-}
-
 function appendOrePercents(list, drops) {
   for (const { ore, pct } of dropList(drops)) {
     const item = document.createElement("li");
@@ -416,15 +479,27 @@ function openSiteInfo(siteId) {
   const body = document.querySelector("#site-info-body");
   body.replaceChildren();
 
-  const allowedLabel = document.createElement("p");
-  allowedLabel.className = "info-label";
-  allowedLabel.textContent = site.tickets.length > 1 ? "Allowed pickaxes" : "Allowed pickaxe";
-  const allowed = document.createElement("ul");
-  allowed.className = "info-axes";
-  for (const id of site.tickets) {
-    const item = document.createElement("li");
-    item.textContent = axeById(id).name;
-    allowed.append(item);
+  const parts = [];
+  if (site.cost && !isUnlocked(progress, site.id)) {
+    const unlockLabel = document.createElement("p");
+    unlockLabel.className = "info-label";
+    unlockLabel.textContent = "Unlock cost";
+    const unlock = document.createElement("ul");
+    unlock.className = "info-ores";
+    for (const { ore, need } of costEntries(site.cost)) {
+      const item = document.createElement("li");
+      const swatch = document.createElement("i");
+      swatch.className = "swatch";
+      swatch.style.setProperty("--swatch", ore.fill);
+      const name = document.createElement("span");
+      name.textContent = ore.name;
+      const frac = document.createElement("span");
+      frac.className = "frac";
+      frac.textContent = String(need);
+      item.append(swatch, name, frac);
+      unlock.append(item);
+    }
+    parts.push(unlockLabel, unlock);
   }
 
   const resourceLabel = document.createElement("p");
@@ -432,25 +507,8 @@ function openSiteInfo(siteId) {
   resourceLabel.textContent = "Resources";
   const resources = document.createElement("ul");
   resources.className = "info-ores";
-  const axes = site.tickets.map((id) => axeById(id));
-  const shared = axes.every((axe) => veinKey(axe.drops) === veinKey(axes[0].drops));
-  if (shared) {
-    appendOrePercents(resources, axes[0].drops);
-  } else {
-    for (const axe of axes) {
-      const group = document.createElement("li");
-      group.className = "info-vein";
-      const title = document.createElement("p");
-      title.textContent = axe.name;
-      const list = document.createElement("ul");
-      list.className = "info-ores";
-      appendOrePercents(list, axe.drops);
-      group.append(title, list);
-      resources.append(group);
-    }
-  }
-
-  body.append(allowedLabel, allowed, resourceLabel, resources);
+  appendOrePercents(resources, axeById(site.tickets[0]).drops);
+  body.append(...parts, resourceLabel, resources);
   siteModal.hidden = false;
   document.querySelector("#site-info-close").focus();
 }
@@ -501,16 +559,26 @@ function activeSite() {
 }
 
 function renderSites() {
-  const list = document.querySelector("#site-list");
+  const unlockable = SITES.toReversed().filter((site) => canPayUnlock(progress, site.id));
+  const unlocked = SITES.toReversed().filter((site) => isUnlocked(progress, site.id));
+  const locked = SITES.filter((site) => !isUnlocked(progress, site.id) && !canPayUnlock(progress, site.id));
+  fillSiteList(document.querySelector("#site-open"), [...unlockable, ...unlocked]);
+  fillSiteList(document.querySelector("#site-locked"), locked);
+}
+
+function fillSiteList(list, sites) {
   list.replaceChildren();
-  for (const site of openSites(progress).toReversed()) {
+  for (const site of sites) {
+    const unlocked = isUnlocked(progress, site.id);
+    const payable = canPayUnlock(progress, site.id);
     const item = document.createElement("li");
+    if (!unlocked && !payable) item.classList.add("dim");
     const copy = document.createElement("div");
     const head = document.createElement("div");
     head.className = "site-head";
     const name = document.createElement("h2");
     name.className = "site-name";
-    if (!progress.played.includes(site.id)) name.append(rainbowLabel(site.name));
+    if (payable || (unlocked && !progress.played.includes(site.id))) name.append(rainbowLabel(site.name));
     else name.textContent = site.name;
     const info = document.createElement("button");
     info.type = "button";
@@ -520,14 +588,38 @@ function renderSites() {
     info.append(infoMark());
     head.append(name, info);
     copy.append(head, veinBar(axeById(site.tickets[0]).drops));
+    if (!unlocked && site.cost) {
+      for (const { ore, need } of costEntries(site.cost)) {
+        const row = document.createElement("p");
+        row.className = "cost-row";
+        const swatch = document.createElement("i");
+        swatch.className = "swatch";
+        swatch.style.setProperty("--swatch", ore.fill);
+        const mat = document.createElement("span");
+        mat.textContent = ore.name;
+        const frac = document.createElement("span");
+        frac.className = "frac";
+        frac.textContent = `${progress.ore[ore.id]}/${need}`;
+        row.append(swatch, mat, frac);
+        copy.append(row);
+      }
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = "solid-btn";
-    button.dataset.site = site.id;
-    button.textContent = "Enter";
+    if (unlocked) {
+      button.dataset.site = site.id;
+      button.textContent = "Enter";
+      button.disabled = !canEnter(progress, site.id);
+    } else {
+      button.dataset.unlock = site.id;
+      button.textContent = "Unlock";
+      button.disabled = !canPayUnlock(progress, site.id);
+    }
     item.append(copy, button);
     list.append(item);
   }
+  list.hidden = list.childElementCount === 0;
 }
 
 function renderCraft() {
@@ -592,47 +684,126 @@ function fillAxeList(list, axes, fresh) {
   list.hidden = list.childElementCount === 0;
 }
 
-function closePick() {
-  pickModal.hidden = true;
+function sparePickaxes() {
+  const equipped = progress.equipped || "simple";
+  return PICKAXES.filter((axe) => axe.id !== "simple" && axe.id !== equipped && ticketsHeld(progress, axe.id) >= 1);
 }
 
-function openPick(siteId, choices) {
-  const site = siteById(siteId);
-  document.querySelector("#pick-title").textContent = site.name;
-  const list = document.querySelector("#pick-list");
-  list.replaceChildren();
-  for (const id of choices.toReversed()) {
-    const axe = axeById(id);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "solid-btn pick-choice";
-    button.dataset.pick = id;
-    const label = document.createElement("span");
-    label.textContent = axe.name;
-    button.append(label);
-    const held = ticketsHeld(progress, id);
-    if (held !== Infinity) {
-      const qty = document.createElement("span");
-      qty.className = "qty";
-      qty.textContent = `x${held}`;
-      button.append(qty);
-    }
-    list.append(button);
-  }
-  pickModal.dataset.site = siteId;
-  pickModal.hidden = false;
-  list.querySelector("button")?.focus();
+function settleBrokenEquip() {
+  const menu = screen === "sites" || screen === "craft" || screen === "items";
+  if (!menu) return;
+  const equipped = progress.equipped || "simple";
+  if (equipped === "simple" || ticketsHeld(progress, equipped) >= 1) return;
+  if (sparePickaxes().length > 0) return;
+  progress.equipped = "simple";
+  saveProgress(progress);
 }
 
-function begin(siteId, ticketId) {
-  const choices = axeChoices(progress, siteId);
-  if (!ticketId && choices.length > 1) {
-    closeSiteInfo();
-    openPick(siteId, choices);
+function needsEquipPrompt() {
+  const equipped = progress.equipped || "simple";
+  if (equipped === "simple" || ticketsHeld(progress, equipped) >= 1) return false;
+  return sparePickaxes().length > 0;
+}
+
+function maybePromptEquip() {
+  const menu = screen === "sites" || screen === "craft" || screen === "items";
+  if (!menu || !needsEquipPrompt()) {
+    closeEquipPrompt();
     return;
   }
-  closePick();
-  const site = enterSite(progress, siteId, ticketId);
+  if (equipPromptSeen) return;
+  openEquipPrompt(null);
+}
+
+function openEquipPrompt(siteId) {
+  equipPromptSeen = true;
+  equipPromptSiteId = siteId;
+  document.querySelector("#equip-prompt-simple").hidden = !siteId;
+  document.querySelector("#equip-prompt-note").hidden = !siteId;
+  equipPromptModal.hidden = false;
+  document.querySelector("#equip-prompt-ok").focus();
+}
+
+function closeEquipPrompt() {
+  equipPromptSiteId = null;
+  document.querySelector("#equip-prompt-simple").hidden = true;
+  document.querySelector("#equip-prompt-note").hidden = true;
+  equipPromptModal.hidden = true;
+}
+
+function acceptEquipPrompt() {
+  closeEquipPrompt();
+  if (screen !== "items") go("items");
+}
+
+function proceedWithSimple() {
+  const siteId = equipPromptSiteId;
+  closeEquipPrompt();
+  if (!equip(progress, "simple")) return;
+  if (siteId) begin(siteId);
+}
+
+function openEquipAsk(axeId) {
+  equipAskId = axeId;
+  const next = axeById(axeId);
+  const current = axeById(progress.equipped || "simple");
+  document.querySelector("#equip-ask-title").textContent = next.name;
+  document.querySelector("#equip-ask-copy").textContent = `Equip ${next.name}?`;
+  document.querySelector("#equip-ask-no").textContent = `Keep ${current.name}`;
+  equipAskModal.hidden = false;
+  document.querySelector("#equip-ask-yes").focus();
+}
+
+function closeEquipAsk() {
+  equipAskModal.hidden = true;
+  equipAskId = null;
+}
+
+function openForgeAsk(axeId) {
+  const axe = axeById(axeId);
+  if (!axe) return;
+  forgeAskId = axe.id;
+  document.querySelector("#forge-ask-title").textContent = axe.name;
+  document.querySelector("#forge-ask-copy").textContent = "Want to forge a new pickaxe?";
+  forgeAskModal.hidden = false;
+  document.querySelector("#forge-ask-yes").focus();
+}
+
+function closeForgeAsk() {
+  forgeAskModal.hidden = true;
+  forgeAskId = null;
+}
+
+function acceptForgeAsk() {
+  const axeId = forgeAskId;
+  closeForgeAsk();
+  if (!axeId || !forge(progress, axeId)) return;
+  const axe = axeById(axeId);
+  audio.blip(330, 0.06);
+  audio.blip(494, 0.08);
+  announce(`Forged ${axe.name}.`);
+  const site = activeSite();
+  if (site) begin(site.id);
+}
+
+function openUnlockAsk(siteId) {
+  const site = siteById(siteId);
+  if (!site) return;
+  unlockAskId = site.id;
+  document.querySelector("#unlock-ask-title").textContent = site.name;
+  document.querySelector("#unlock-ask-copy").textContent = `Proceed to ${site.name}?`;
+  unlockAskModal.hidden = false;
+  document.querySelector("#unlock-ask-yes").focus();
+}
+
+function closeUnlockAsk() {
+  unlockAskModal.hidden = true;
+  unlockAskId = null;
+}
+
+function begin(siteId) {
+  closeSiteInfo();
+  const site = enterSite(progress, siteId);
   if (!site) {
     renderSites();
     return;
@@ -676,24 +847,53 @@ function renderShaftHead() {
 function renderShaftPack() {
   const list = document.querySelector("#shaft-pack");
   list.replaceChildren();
-  const axe = axeById(state.ticket);
-  for (const { ore } of dropList(axe.drops)) {
+  const drops = state.drops ?? axeById(activeSite()?.tickets?.[0])?.drops;
+  for (const { ore } of dropList(drops)) {
     const item = document.createElement("li");
     const swatch = document.createElement("i");
     swatch.className = "swatch";
     swatch.style.setProperty("--swatch", ore.fill);
-    const label = document.createElement("span");
-    label.dataset.ore = ore.id;
-    label.textContent = `${ore.name} ${progress.ore[ore.id]}`;
-    item.append(swatch, label);
+    const lead = document.createElement("span");
+    lead.className = "pack-name";
+    const name = document.createElement("span");
+    name.textContent = ore.name;
+    const qty = document.createElement("span");
+    qty.className = "qty";
+    qty.dataset.ore = ore.id;
+    qty.textContent = String(progress.ore[ore.id]);
+    lead.append(swatch, name);
+    item.append(lead, qty);
     list.append(item);
   }
 }
 
 function syncShaft() {
-  for (const label of document.querySelectorAll("#shaft-pack [data-ore]")) {
-    const ore = ORES.find((item) => item.id === label.dataset.ore);
-    label.textContent = `${ore.name} ${progress.ore[ore.id]}`;
+  for (const qty of document.querySelectorAll("#shaft-pack [data-ore]")) {
+    qty.textContent = String(progress.ore[qty.dataset.ore]);
+  }
+}
+
+function renderRunResult() {
+  const list = document.querySelector("#end-result");
+  list.replaceChildren();
+  const farmed = state.runOre ?? {};
+  for (const ore of ORES.toReversed()) {
+    const amount = farmed[ore.id] ?? 0;
+    if (amount <= 0) continue;
+    const item = document.createElement("li");
+    const lead = document.createElement("span");
+    lead.className = "pack-name";
+    const swatch = document.createElement("i");
+    swatch.className = "swatch";
+    swatch.style.setProperty("--swatch", ore.fill);
+    const name = document.createElement("span");
+    name.textContent = ore.name;
+    const qty = document.createElement("span");
+    qty.className = "qty";
+    qty.textContent = String(amount);
+    lead.append(swatch, name);
+    item.append(lead, qty);
+    list.append(item);
   }
 }
 
@@ -704,18 +904,14 @@ function hideEnd() {
 
 function showOver() {
   const site = activeSite();
-  const axe = axeById(state.ticket);
   document.querySelector("#end-title").textContent = site.name;
+  renderRunResult();
   const again = document.querySelector("#end-again");
   const held = ticketsHeld(progress, state.ticket);
-  if (canEnter(progress, site.id)) {
+  if (canEnter(progress, site.id) || (held === 0 && canForge(progress, state.ticket))) {
     again.hidden = false;
     again.textContent = "Try again";
-    again.dataset.mode = "enter";
-  } else if (held === 0 && canForge(progress, state.ticket)) {
-    again.hidden = false;
-    again.textContent = `Forge ${axe.name}`;
-    again.dataset.mode = "forge";
+    again.dataset.mode = held === 0 && !canEnter(progress, site.id) ? "forge" : "enter";
   } else {
     again.hidden = true;
     again.dataset.mode = "";
@@ -840,14 +1036,26 @@ document.querySelectorAll("[data-go]").forEach((button) => {
   button.addEventListener("click", () => go(button.dataset.go));
 });
 
-document.querySelector("#site-list").addEventListener("click", (event) => {
+for (const list of document.querySelectorAll("#site-locked, #site-open")) list.addEventListener("click", (event) => {
   const info = event.target.closest("button[data-info]");
   if (info) {
     openSiteInfo(info.dataset.info);
     return;
   }
+  const unlock = event.target.closest("button[data-unlock]");
+  if (unlock && !unlock.disabled) {
+    audio.unlock();
+    if (unlockSite(progress, unlock.dataset.unlock)) {
+      const siteId = unlock.dataset.unlock;
+      renderSites();
+      paintNav();
+      syncRainbow();
+      openUnlockAsk(siteId);
+    }
+    return;
+  }
   const button = event.target.closest("button[data-site]");
-  if (!button) return;
+  if (!button || button.disabled) return;
   const site = siteById(button.dataset.site);
   audio.unlock();
   begin(site.id);
@@ -862,12 +1070,16 @@ for (const list of document.querySelectorAll("#axe-list, #axe-locked")) list.add
   const button = event.target.closest("button[data-axe]");
   if (!button || button.disabled) return;
   audio.unlock();
-  if (!forge(progress, button.dataset.axe)) return;
+  const axeId = button.dataset.axe;
+  const equipped = progress.equipped || "simple";
+  const higher = PICKAXES.findIndex((axe) => axe.id === axeId) > PICKAXES.findIndex((axe) => axe.id === equipped);
+  if (!forge(progress, axeId)) return;
   audio.blip(330, 0.06);
   audio.blip(494, 0.08);
-  const axe = axeById(button.dataset.axe);
+  const axe = axeById(axeId);
   announce(`Forged ${axe.name}.`);
   renderCraft();
+  if (higher) openEquipAsk(axeId);
 });
 
 document.querySelector("#settings-erase").addEventListener("click", () => {
@@ -904,19 +1116,54 @@ document.querySelector("#end-craft").addEventListener("click", () => {
 document.querySelector("#end-again").addEventListener("click", () => {
   const site = activeSite();
   if (document.querySelector("#end-again").dataset.mode === "forge") {
-    if (!forge(progress, state.ticket)) return;
+    openForgeAsk(state.ticket);
+    return;
   }
   begin(site.id);
 });
-document.querySelector("#pick-list").addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-pick]");
+document.querySelector("#item-axes").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-equip]");
   if (!button) return;
+  if (!equip(progress, button.dataset.equip)) return;
   audio.unlock();
-  begin(pickModal.dataset.site, button.dataset.pick);
+  audio.blip(520, 0.04);
+  renderItems();
+  settleBrokenEquip();
+  maybePromptEquip();
 });
-document.querySelector("#pick-cancel").addEventListener("click", closePick);
-pickModal.addEventListener("click", (event) => {
-  if (event.target === pickModal) closePick();
+document.querySelector("#forge-ask-yes").addEventListener("click", acceptForgeAsk);
+document.querySelector("#forge-ask-no").addEventListener("click", closeForgeAsk);
+forgeAskModal.addEventListener("click", (event) => {
+  if (event.target === forgeAskModal) closeForgeAsk();
+});
+document.querySelector("#unlock-ask-yes").addEventListener("click", () => {
+  const siteId = unlockAskId;
+  closeUnlockAsk();
+  if (!siteId) return;
+  if (canEnter(progress, siteId)) begin(siteId);
+  else if (needsEquipPrompt()) openEquipPrompt(siteId);
+  else {
+    equip(progress, "simple");
+    begin(siteId);
+  }
+});
+document.querySelector("#unlock-ask-no").addEventListener("click", closeUnlockAsk);
+unlockAskModal.addEventListener("click", (event) => {
+  if (event.target === unlockAskModal) closeUnlockAsk();
+});
+document.querySelector("#equip-ask-yes").addEventListener("click", () => {
+  if (equipAskId) equip(progress, equipAskId);
+  closeEquipAsk();
+  if (screen === "items") renderItems();
+});
+document.querySelector("#equip-ask-no").addEventListener("click", closeEquipAsk);
+equipAskModal.addEventListener("click", (event) => {
+  if (event.target === equipAskModal) closeEquipAsk();
+});
+document.querySelector("#equip-prompt-ok").addEventListener("click", acceptEquipPrompt);
+document.querySelector("#equip-prompt-simple").addEventListener("click", proceedWithSimple);
+equipPromptModal.addEventListener("click", (event) => {
+  if (event.target === equipPromptModal) acceptEquipPrompt();
 });
 document.querySelector("#site-info-close").addEventListener("click", closeSiteInfo);
 siteModal.addEventListener("click", (event) => {
@@ -966,13 +1213,16 @@ document.querySelectorAll(".touch button").forEach((button) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     event.preventDefault();
-    if (!pickModal.hidden) closePick();
+    if (!equipPromptModal.hidden) acceptEquipPrompt();
+    else if (!forgeAskModal.hidden) closeForgeAsk();
+    else if (!unlockAskModal.hidden) closeUnlockAsk();
+    else if (!equipAskModal.hidden) closeEquipAsk();
     else if (!siteModal.hidden) closeSiteInfo();
     else if (settingsOpen) closeSettings();
     else if (!endModal.hidden) leaveShaft();
     return;
   }
-  if (settingsOpen || !endModal.hidden || !siteModal.hidden || !pickModal.hidden) return;
+  if (settingsOpen || !endModal.hidden || !siteModal.hidden || !equipAskModal.hidden || !equipPromptModal.hidden || !unlockAskModal.hidden || !forgeAskModal.hidden) return;
   if (event.target.closest("button")) return;
   if (screen !== "shaft" || !state) {
     if (screen === "title" && (event.key === "Enter" || event.key === " ")) {

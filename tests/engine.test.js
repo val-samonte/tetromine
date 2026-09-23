@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ORES, PICKAXES, SITES, axeById, gravityFor, CLEAR_BURST, CLEAR_FALL, CLEAR_LAND } from "../src/data.js";
 import {
-  axeChoices,
   canEnter,
   canForge,
   createProgress,
   createState,
   enterSite,
+  equip,
   forge,
+  unlockSite,
   hardDrop,
   openSites,
   orientedCells,
@@ -24,41 +25,47 @@ test("every vein sums to 100 and the opening tables match the brief", () => {
     const sum = Object.values(axe.drops).reduce((total, weight) => total + weight, 0);
     assert.equal(sum, 100, axe.id);
   }
-  assert.deepEqual(PICKAXES[0].drops, { stone: 99.9, coal: 0.1 });
-  assert.equal(rollOre(PICKAXES[0].drops, () => 0.998), "stone");
-  assert.equal(rollOre(PICKAXES[0].drops, () => 0.999), "coal");
+  assert.deepEqual(PICKAXES[0].drops, { stone: 99, coal: 1 });
+  assert.equal(rollOre(PICKAXES[0].drops, () => 0.989), "stone");
+  assert.equal(rollOre(PICKAXES[0].drops, () => 0.99), "coal");
   assert.deepEqual(PICKAXES[1].drops, { stone: 80, copper: 20 });
-  assert.deepEqual(PICKAXES[2].drops, { stone: 50, copper: 30, tin: 20 });
-  assert.deepEqual(PICKAXES.find((axe) => axe.id === "bronze").drops, { stone: 60, copper: 35, iron: 5 });
+  assert.deepEqual(PICKAXES[2].drops, { stone: 40, copper: 50, tin: 10 });
+  assert.deepEqual(PICKAXES.find((axe) => axe.id === "bronze").drops, { stone: 12, copper: 35, tin: 23, iron: 30 });
   assert.deepEqual(PICKAXES.find((axe) => axe.id === "iron").drops, { stone: 30, copper: 10, tin: 30, coal: 30 });
+  assert.deepEqual(PICKAXES.find((axe) => axe.id === "steel").drops, { stone: 8, copper: 14, tin: 14, iron: 24, coal: 25, silver: 15 });
+  assert.deepEqual(PICKAXES.find((axe) => axe.id === "silver").drops, { copper: 12, tin: 12, iron: 21, coal: 10, silver: 40, gold: 5 });
 });
 
 test("forge costs keep Melvor bar ratios", () => {
   const byId = Object.fromEntries(PICKAXES.map((axe) => [axe.id, axe]));
-  assert.deepEqual(byId.stone.cost, { stone: 30 });
-  assert.deepEqual(byId.copper.cost, { copper: 20 });
-  assert.deepEqual(byId.bronze.cost, { copper: 20, tin: 20 });
+  assert.deepEqual(byId.stone.cost, { stone: 60 });
+  assert.deepEqual(byId.copper.cost, { copper: 40 });
+  assert.deepEqual(byId.bronze.cost, { copper: 40, tin: 40 });
   assert.ok(PICKAXES.findIndex((axe) => axe.id === "bronze") < PICKAXES.findIndex((axe) => axe.id === "iron"));
   assert.equal(SITES.find((site) => site.tickets.includes("bronze")).id, "iron");
   assert.equal(byId.steel.cost.coal, byId.steel.cost.iron * 2);
-  assert.deepEqual(byId.silver.cost, { silver: 20 });
-  assert.deepEqual(byId.gold.cost, { gold: 20 });
+  assert.deepEqual(byId.silver.cost, { silver: 40 });
   assert.equal(byId.simple.cost, null);
 });
 
-test("a held pickaxe opens its site and the simple pickaxe is not spent", () => {
+test("a site unlocks by spending ore, and enter spends the equipped pickaxe", () => {
   assert.ok(SITES.every((site) => site.tickets.length >= 1));
   const progress = createProgress(null);
+  assert.equal(progress.equipped, "simple");
   assert.deepEqual(openSites(progress).map((site) => site.id), ["quarry"]);
-  assert.equal(enterSite(progress, "quarry")?.id, "quarry");
+  assert.equal(enterSite(progress, "quarry")?.ticket, "simple");
   assert.equal(progress.axes.stone, 0);
 
-  progress.ore.stone = 30;
-  assert.equal(forge(progress, "stone"), true);
+  progress.ore.stone = 120;
+  assert.equal(unlockSite(progress, "copper"), true);
   assert.equal(progress.ore.stone, 0);
-  assert.equal(progress.axes.stone, 1);
+  assert.equal(unlockSite(progress, "copper"), false);
   assert.deepEqual(openSites(progress).map((site) => site.id), ["quarry", "copper"]);
+  assert.equal(canEnter(progress, "copper"), true);
 
+  progress.ore.stone = 60;
+  assert.equal(forge(progress, "stone"), true);
+  assert.equal(equip(progress, "stone"), true);
   assert.equal(enterSite(progress, "copper")?.ticket, "stone");
   assert.equal(progress.axes.stone, 0);
   assert.ok(progress.had.includes("stone"));
@@ -70,7 +77,7 @@ test("a held pickaxe opens its site and the simple pickaxe is not spent", () => 
 
 test("a pickaxe you already had is remembered after it is spent", () => {
   const fresh = createProgress(null);
-  fresh.ore.stone = 30;
+  fresh.ore.stone = 60;
   assert.equal(forge(fresh, "stone"), true);
   assert.deepEqual(fresh.had, ["stone"]);
 
@@ -86,34 +93,40 @@ test("a pickaxe you already had is remembered after it is spent", () => {
 test("an older save treats sites it can already enter as played", () => {
   const progress = createProgress({ axes: { stone: 1, copper: 2 } });
   assert.deepEqual(progress.played, ["quarry", "copper", "tin"]);
-  progress.ore.copper = 20;
-  progress.ore.tin = 20;
-  assert.equal(forge(progress, "bronze"), true);
+  assert.equal(enterSite(progress, "iron"), null);
+  progress.ore.copper = 100;
+  progress.ore.tin = 80;
+  assert.equal(unlockSite(progress, "iron"), true);
   assert.equal(progress.played.includes("iron"), false);
   assert.equal(enterSite(progress, "iron")?.id, "iron");
   assert.equal(progress.played.includes("iron"), true);
 });
 
-test("a stronger pickaxe can be chosen without changing the site vein", () => {
+test("an older save keeps sites the held pickaxes already opened", () => {
+  const progress = createProgress({ axes: { stone: 1, iron: 2 } });
+  assert.equal(progress.equipped, "iron");
+  assert.ok(progress.unlocked.includes("quarry"));
+  assert.ok(progress.unlocked.includes("copper"));
+  assert.equal(progress.unlocked.includes("iron"), false);
+  assert.ok(progress.unlocked.includes("coal"));
+  assert.equal(progress.unlocked.includes("tin"), false);
+});
+
+test("entering spends the equipped pickaxe and keeps the site vein", () => {
   const progress = createProgress(null);
-  progress.axes.stone = 1;
-  progress.axes.copper = 1;
-  progress.axes.bronze = 1;
   progress.axes.iron = 1;
-  assert.deepEqual(axeChoices(progress, "copper"), ["stone", "copper", "bronze", "iron"]);
-  assert.deepEqual(axeChoices(progress, "tin"), ["copper", "bronze"]);
-  assert.deepEqual(axeChoices(progress, "iron"), ["bronze", "iron"]);
-  assert.deepEqual(axeChoices(progress, "coal"), ["iron"]);
-  const entered = enterSite(progress, "copper", "iron");
+  progress.unlocked = ["quarry", "copper"];
+  assert.equal(equip(progress, "iron"), true);
+  const entered = enterSite(progress, "copper");
   assert.equal(entered.ticket, "iron");
   assert.equal(progress.axes.iron, 0);
-  assert.equal(progress.axes.stone, 1);
+  assert.equal(progress.axes.stone, 0);
   const state = createState(progress, entered.ticket, () => 0.99, axeById(entered.tickets[0]).drops);
   assert.ok(state.queue.every((piece) => piece.ores.every((ore) => ore === "copper")));
 });
 
 test("a run rolls the ticket's vein, not a later pickaxe", () => {
-  const simple = createState(createProgress(null), "simple", () => 0.99);
+  const simple = createState(createProgress(null), "simple", () => 0.989);
   assert.ok(simple.queue.every((piece) => piece.ores.every((ore) => ore === "stone")));
   const copper = createState(createProgress(null), "copper", () => 0.99);
   assert.ok(copper.queue.every((piece) => piece.ores.every((ore) => ore === "tin")));
@@ -127,7 +140,7 @@ test("a full row the pickaxe is not strong against clears completely", () => {
   state.board[19] = Array(10).fill("tin");
   resolveClear(state);
   assert.equal(progress.ore.stone, 19);
-  assert.equal(progress.ore.tin, 10);
+  assert.equal(progress.ore.tin, 0);
   assert.equal(progress.ore.copper, 0);
   assert.equal(state.board.every((row) => row.every((cell) => cell === null)), true);
 
@@ -289,9 +302,9 @@ test("full rows already eligible clear together, and the holed row waits", () =>
   assert.equal(state.board[18][0], "copper");
 
   tick(state, CLEAR_BURST);
-  assert.equal(progress.ore.tin, 10);
-  assert.equal(progress.ore.copper, 10);
-  assert.equal(progress.ore.iron, 10);
+  assert.equal(progress.ore.tin, 0);
+  assert.equal(progress.ore.copper, 0);
+  assert.equal(progress.ore.iron, 0);
   assert.equal(progress.ore.gold, 0);
   assert.equal(state.board[19][0], null);
   assert.equal(state.board[19][1], "gold");
@@ -362,12 +375,13 @@ test("each pickaxe wildcards different ores", () => {
   const byId = Object.fromEntries(PICKAXES.map((axe) => [axe.id, axe]));
   assert.deepEqual(byId.simple.wildcards, []);
   for (const axe of PICKAXES) {
-    if (axe.id === "simple") continue;
+    if (axe.id === "simple" || axe.id === "bronze" || axe.id === "silver") continue;
     assert.ok(axe.wildcards.includes("stone"), axe.id);
   }
   assert.deepEqual(byId.copper.wildcards, ["stone", "copper"]);
-  assert.deepEqual(byId.bronze.wildcards, ["stone", "copper", "tin"]);
+  assert.deepEqual(byId.bronze.wildcards, ["copper", "tin"]);
   assert.deepEqual(byId.iron.wildcards, ["stone", "copper", "iron"]);
+  assert.deepEqual(byId.silver.wildcards, ["silver"]);
 
   const progress = createProgress(null);
   const state = createState(progress, "bronze", () => 0);
@@ -375,19 +389,11 @@ test("each pickaxe wildcards different ores", () => {
   resolveClear(state);
   assert.equal(progress.ore.copper, 6);
   assert.equal(progress.ore.tin, 4);
-  assert.equal(progress.ore.stone, 6);
+  assert.equal(progress.ore.stone, 0);
   assert.equal(progress.ore.iron, 0);
-  assert.equal(state.board[19][0], null);
+  assert.equal(state.board[19][0], "stone");
   assert.equal(state.board[19][1], null);
   assert.equal(state.board[19][3], "iron");
-});
-
-test("the gold ticket pays double, and a proc pays double again", () => {
-  const progress = createProgress(null);
-  const state = createState(progress, "gold", () => 0);
-  state.board[19] = Array(10).fill("gold");
-  resolveClear(state);
-  assert.equal(progress.ore.gold, 40);
 });
 
 test("ores rotate with the mino and four turns restore the piece", () => {
@@ -433,6 +439,7 @@ test("a pickaxe gets faster as this run's resources pile up", () => {
   state.board[19] = Array(10).fill("stone");
   resolveClear(state);
   assert.equal(state.runResources, 10);
+  assert.equal(state.runOre.stone, 10);
 });
 
 test("ore ids cover the Melvor line through gold", () => {

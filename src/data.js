@@ -1,12 +1,14 @@
 // Ore order follows Melvor Idle through gold, with stone as the tutorial rock.
-// Stone Quarry is 99.9% stone and 0.1% coal. Copper Cut and Tin Drift use
-// the opening tables. Iron Hollow is stone 60%, copper 35%, iron 5%.
+// Stone Quarry is 99% stone and 1% coal. Copper Cut and Tin Drift use
+// the opening tables. Iron Hollow is stone 12%, copper 35%, tin 23%, iron 30%.
 // Coal Seam is tin 30%, coal 30%,
-// copper 10%, stone 30%.
+// copper 10%, stone 30%. Silver Lode is stone 8%, copper 14%, tin 14%,
+// iron 24%, coal 25%, silver 15%. Gold Reef has no stone. Gold is 5%,
+// silver 40%, iron 21%, coal 10%, copper 12%, tin 12%.
 //
 // Pickaxe recipes use Melvor bar ratios, scaled so a pure row of 10 is the unit:
 // bronze 1 copper : 1 tin, iron bar 1 iron, steel 1 iron : 2 coal,
-// silver bar 1 silver, gold bar 1 gold.
+// silver bar 1 silver.
 
 export const COLS = 10;
 export const ROWS = 20;
@@ -28,12 +30,12 @@ export const PICKAXES = [
     id: "simple",
     name: "Simple Pickaxe",
     hardAt: 1500,
-    drops: { stone: 99.9, coal: 0.1 },
+    drops: { stone: 99, coal: 1 },
     yield: 1,
     doubleChance: 0,
     wildcards: [],
     cost: null,
-    enters: "Coal ore is 0.1%. The rest is stone.",
+    enters: "Coal ore is 1%. The rest is stone.",
     note: "The starter head. Nothing but stone will break.",
   },
   {
@@ -44,7 +46,7 @@ export const PICKAXES = [
     yield: 1,
     doubleChance: 0,
     wildcards: ["stone"],
-    cost: { stone: 30 },
+    cost: { stone: 60 },
     enters: "Copper ore enters the vein at 20%.",
     note: "Cut from stone. Copper is a Melvor level-1 rock, and this is the head that finds it.",
   },
@@ -52,24 +54,24 @@ export const PICKAXES = [
     id: "copper",
     name: "Copper Pickaxe",
     hardAt: 800,
-    drops: { stone: 50, copper: 30, tin: 20 },
+    drops: { stone: 40, copper: 50, tin: 10 },
     yield: 1,
     doubleChance: 0.05,
     wildcards: ["stone", "copper"],
-    cost: { copper: 20 },
-    enters: "Tin ore enters at 20%. Stone 50%, copper 30%.",
+    cost: { copper: 40 },
+    enters: "Tin ore is 10%. Stone 40%, copper 50%.",
     note: "Melvor tin is the other level-1 rock. 5% of mined blocks pay double.",
   },
   {
     id: "bronze",
     name: "Bronze Pickaxe",
     hardAt: 650,
-    drops: { stone: 60, copper: 35, iron: 5 },
+    drops: { stone: 12, copper: 35, tin: 23, iron: 30 },
     yield: 1,
     doubleChance: 0.08,
-    wildcards: ["stone", "copper", "tin"],
-    cost: { copper: 20, tin: 20 },
-    enters: "Iron ore enters at 5%. Stone 60%, copper 35%.",
+    wildcards: ["copper", "tin"],
+    cost: { copper: 40, tin: 40 },
+    enters: "Iron ore is 30%. Tin 23%, copper 35%, stone 12%.",
     note: "Melvor bronze bar is 1 copper ore + 1 tin ore. This head opens the iron deposit.",
   },
   {
@@ -80,7 +82,7 @@ export const PICKAXES = [
     yield: 1,
     doubleChance: 0.1,
     wildcards: ["stone", "copper", "iron"],
-    cost: { iron: 20 },
+    cost: { iron: 40 },
     enters: "Coal ore is 30%. Tin 30%, copper 10%, stone 30%.",
     note: "Melvor iron bar is 1 iron ore. 10% of mined blocks pay double.",
   },
@@ -88,37 +90,25 @@ export const PICKAXES = [
     id: "steel",
     name: "Steel Pickaxe",
     hardAt: 400,
-    drops: { stone: 12, copper: 7, tin: 12, iron: 19, coal: 30, silver: 20 },
+    drops: { stone: 8, copper: 14, tin: 14, iron: 24, coal: 25, silver: 15 },
     yield: 1,
     doubleChance: 0.12,
     wildcards: ["stone", "iron", "coal"],
-    cost: { iron: 20, coal: 40 },
-    enters: "Silver ore enters at 20%. Coal moves to 30%.",
+    cost: { iron: 40, coal: 80 },
+    enters: "Silver ore is 15%. Tin 14%, iron 24%, coal 25%, copper 14%, stone 8%.",
     note: "Melvor steel bar is 1 iron ore + 2 coal ore. Same ratio. 12% of mined blocks pay double.",
   },
   {
     id: "silver",
     name: "Silver Pickaxe",
     hardAt: 320,
-    drops: { stone: 8, copper: 4, tin: 7, iron: 12, coal: 19, silver: 30, gold: 20 },
+    drops: { copper: 12, tin: 12, iron: 21, coal: 10, silver: 40, gold: 5 },
     yield: 1,
     doubleChance: 0.15,
-    wildcards: ["stone", "silver"],
-    cost: { silver: 20 },
-    enters: "Gold ore enters at 20%. Silver moves to 30%.",
+    wildcards: ["silver"],
+    cost: { silver: 40 },
+    enters: "Gold ore is 5%. Silver 40%, iron 21%, coal 10%, copper 12%, tin 12%.",
     note: "Melvor silver bar is 1 silver ore. 15% of mined blocks pay double.",
-  },
-  {
-    id: "gold",
-    name: "Gold Pickaxe",
-    hardAt: 250,
-    drops: { stone: 8, copper: 4, tin: 7, iron: 12, coal: 19, silver: 30, gold: 20 },
-    yield: 2,
-    doubleChance: 0.2,
-    wildcards: ["stone", "gold"],
-    cost: { gold: 20 },
-    enters: "No new ore. Every mined block pays double, and 20% of those pay double again.",
-    note: "Melvor gold bar is 1 gold ore. Last head on this claim.",
   },
 ];
 
@@ -187,56 +177,57 @@ export function costEntries(cost) {
   }));
 }
 
-// A site lists every pickaxe allowed in. The vein shown for the site is the
-// drop table of those pickaxes. Simple never breaks, and it opens the quarry.
+// tickets[0] is the vein. cost is the one-time ore spend that unlocks the site.
+// Those costs are double the pickaxe that used to open the site. Quarry stays open.
 export const SITES = [
   {
     id: "quarry",
     name: "Stone Quarry",
     tickets: ["simple"],
-    place: "Loose rock. Coal shows in one block out of a thousand.",
+    cost: null,
+    place: "Loose rock. Coal shows in one block out of a hundred.",
   },
   {
     id: "copper",
     name: "Copper Cut",
     tickets: ["stone"],
+    cost: { stone: 120 },
     place: "The wall is still mostly stone. One block in five is copper.",
   },
   {
     id: "tin",
     name: "Tin Drift",
     tickets: ["copper"],
+    cost: { copper: 80 },
     place: "Stone, copper, and tin sit in the same stones.",
   },
   {
     id: "iron",
     name: "Iron Hollow",
     tickets: ["bronze"],
+    cost: { copper: 100, tin: 80 },
     place: "The wall is mostly stone. Copper is common. Iron is scarce.",
   },
   {
     id: "coal",
     name: "Coal Seam",
     tickets: ["iron"],
+    cost: { iron: 80 },
     place: "Tin and coal share the wall. Stone fills the rest. Copper is scarce.",
   },
   {
     id: "silver",
     name: "Silver Lode",
     tickets: ["steel"],
+    cost: { iron: 80, coal: 160 },
     place: "Silver shows in the wall. Coal is the common rock.",
   },
   {
     id: "gold",
     name: "Gold Reef",
     tickets: ["silver"],
+    cost: { silver: 80 },
     place: "Gold shows in the wall. Silver is the common metal.",
-  },
-  {
-    id: "deep-gold",
-    name: "Deep Gold",
-    tickets: ["gold"],
-    place: "The same reef. Every mined block pays double.",
   },
 ];
 

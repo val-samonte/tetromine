@@ -1,4 +1,4 @@
-import { COLS, ORE_BY_ID, ROWS } from "./data.js";
+import { axeById, COLS, ORE_BY_ID, ROWS } from "./data.js";
 import { orientedCells } from "./engine.js";
 
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -17,6 +17,51 @@ function fit(canvas) {
   return { ctx, width: rect.width, height: rect.height };
 }
 
+function strongBlock(ticket, oreId) {
+  const axe = axeById(ticket);
+  return Boolean(axe) && !axe.wildcards.includes(oreId);
+}
+
+function mixColor(from, to, t) {
+  const parse = (hex) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+  const a = parse(from);
+  const b = parse(to);
+  const channel = a.map((value, i) => Math.round(value + (b[i] - value) * t));
+  return `rgb(${channel[0]}, ${channel[1]}, ${channel[2]})`;
+}
+
+function fillTri(ctx, points, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  ctx.lineTo(points[1][0], points[1][1]);
+  ctx.lineTo(points[2][0], points[2][1]);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function pyramidFaces(left, top, width, height) {
+  const right = left + width;
+  const bottom = top + height;
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  return {
+    top: [[left, top], [right, top], [cx, cy]],
+    left: [[left, top], [left, bottom], [cx, cy]],
+    right: [[right, top], [right, bottom], [cx, cy]],
+    bottom: [[left, bottom], [right, bottom], [cx, cy]],
+  };
+}
+
+function drawPyramid(ctx, left, top, width, height, ore) {
+  const faces = pyramidFaces(left, top, width, height);
+  const side = mixColor(ore.fill, ore.deep, 0.5);
+  fillTri(ctx, faces.top, ore.fill);
+  fillTri(ctx, faces.left, side);
+  fillTri(ctx, faces.right, side);
+  fillTri(ctx, faces.bottom, ore.deep);
+}
+
 function drawBlock(ctx, x, y, size, oreId, options = {}) {
   const ore = ORE_BY_ID[oreId];
   if (!ore) return;
@@ -26,24 +71,37 @@ function drawBlock(ctx, x, y, size, oreId, options = {}) {
   const width = size - gap * 2;
   const height = size - gap * 2;
   if (options.ghost) {
+    ctx.save();
     ctx.strokeStyle = ore.fill;
+    ctx.fillStyle = ore.fill;
     ctx.globalAlpha = 0.55;
     ctx.lineWidth = Math.max(1, size * 0.06);
+    if (options.strong) {
+      const faces = pyramidFaces(left, top, width, height);
+      fillTri(ctx, faces.top, ore.fill);
+      fillTri(ctx, faces.bottom, ore.fill);
+    }
     ctx.strokeRect(left, top, width, height);
-    ctx.globalAlpha = 1;
+    ctx.restore();
     return;
   }
-  ctx.fillStyle = ore.deep;
-  ctx.fillRect(left, top, width, height);
+  if (options.strong) {
+    drawPyramid(ctx, left, top, width, height, ore);
+    if (options.wash) {
+      ctx.fillStyle = "rgba(243, 234, 215, 0.55)";
+      ctx.fillRect(left, top, width, height);
+    }
+    return;
+  }
   ctx.fillStyle = ore.fill;
-  ctx.fillRect(left, top, width, height * 0.72);
+  ctx.fillRect(left, top, width, height);
   if (options.wash) {
     ctx.fillStyle = "rgba(243, 234, 215, 0.55)";
     ctx.fillRect(left, top, width, height);
   }
 }
 
-function drawBurst(ctx, x, y, size, oreId, t) {
+function drawBurst(ctx, x, y, size, oreId, t, strong) {
   const flash = t < 0.22 ? 1 - t / 0.22 : 0;
   const scale = 1 + Math.sin(Math.min(1, t) * Math.PI) * 0.42;
   const alpha = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
@@ -51,16 +109,22 @@ function drawBurst(ctx, x, y, size, oreId, t) {
   ctx.globalAlpha = alpha;
   ctx.translate(x + size / 2, y + size / 2);
   ctx.scale(scale, scale);
-  drawBlock(ctx, -size / 2, -size / 2, size, oreId, { wash: flash > 0.35 });
+  drawBlock(ctx, -size / 2, -size / 2, size, oreId, { wash: flash > 0.35, strong });
   if (flash > 0) {
     ctx.globalAlpha = alpha * flash * 0.9;
     ctx.fillStyle = "#fff6e4";
     ctx.fillRect(-size * 0.42, -size * 0.42, size * 0.84, size * 0.84);
   }
+  if (strong) {
+    const ore = ORE_BY_ID[oreId];
+    const gap = Math.max(1, size * 0.06);
+    ctx.globalAlpha = alpha;
+    drawPyramid(ctx, -size / 2 + gap, -size / 2 + gap, size - gap * 2, size - gap * 2, ore);
+  }
   ctx.restore();
 }
 
-function drawPreview(ctx, piece, width, height) {
+function drawPreview(ctx, piece, width, height, ticket) {
   ctx.clearRect(0, 0, width, height);
   if (width < 8 || height < 8) return;
   const size = Math.min(width, height) / 4;
@@ -90,7 +154,9 @@ function drawPreview(ctx, piece, width, height) {
   const shiftX = Math.floor((4 - spanX) / 2) - minX;
   const shiftY = Math.floor((4 - spanY) / 2) - minY;
   for (const cell of cells) {
-    drawBlock(ctx, originX + (cell.x + shiftX) * size, originY + (cell.y + shiftY) * size, size, cell.ore);
+    drawBlock(ctx, originX + (cell.x + shiftX) * size, originY + (cell.y + shiftY) * size, size, cell.ore, {
+      strong: strongBlock(ticket, cell.ore),
+    });
   }
 }
 
@@ -236,8 +302,8 @@ export function createView(shaft, next) {
         if (!ore) return;
         const key = `${x},${y}`;
         if (gone.has(key)) return;
-        if (clearing.has(key)) drawBurst(ctx, x * cell, y * cell, cell, ore, burstT);
-        else drawBlock(ctx, x * cell, (slide.get(key) ?? y) * cell, cell, ore);
+        if (clearing.has(key)) drawBurst(ctx, x * cell, y * cell, cell, ore, burstT, strongBlock(state.ticket, ore));
+        else drawBlock(ctx, x * cell, (slide.get(key) ?? y) * cell, cell, ore, { strong: strongBlock(state.ticket, ore) });
       });
       if (stuckRow(state, row)) {
         ctx.save();
@@ -257,10 +323,17 @@ export function createView(shaft, next) {
       const live = new Set(worldKey(state));
       for (const cellPos of ghost) {
         const key = `${cellPos.x},${cellPos.y}`;
-        if (!live.has(key)) drawBlock(ctx, cellPos.x * cell, cellPos.y * cell, cell, cellPos.ore, { ghost: true });
+        if (!live.has(key)) {
+          drawBlock(ctx, cellPos.x * cell, cellPos.y * cell, cell, cellPos.ore, {
+            ghost: true,
+            strong: strongBlock(state.ticket, cellPos.ore),
+          });
+        }
       }
       for (const cellPos of cellsNow(state)) {
-        drawBlock(ctx, cellPos.x * cell, cellPos.y * cell, cell, cellPos.ore);
+        drawBlock(ctx, cellPos.x * cell, cellPos.y * cell, cell, cellPos.ore, {
+          strong: strongBlock(state.ticket, cellPos.ore),
+        });
       }
     }
 
@@ -289,7 +362,7 @@ export function createView(shaft, next) {
     }
     ctx.restore();
     ctx.globalAlpha = 1;
-    drawPreview(upcoming.ctx, state.queue[0], upcoming.width, upcoming.height);
+    drawPreview(upcoming.ctx, state.queue[0], upcoming.width, upcoming.height, state.ticket);
   }
 
   return { frame, onEvent };

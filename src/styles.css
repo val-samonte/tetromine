@@ -470,6 +470,34 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
 
 .pack { display: grid; gap: 6px; }
 
+.pack li { justify-content: space-between; }
+
+.pack-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#end-result { margin: 2px 0 6px; }
+
+#end-result:empty { display: none; }
+
+.modal-card .inventory-label { margin: 0.15rem 0 0; }
+
+[data-screen="items"].items-blank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0;
+  padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+}
+
+.items-empty {
+  margin: 0;
+  text-align: center;
+}
+
 .shaft-axe {
   margin: 0;
   font-size: 1.7rem;
@@ -512,21 +540,10 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   background: rgba(16, 14, 12, 0.78);
 }
 
-#pick-modal { z-index: 7; }
-
-#pick-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.pick-choice {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  width: 100%;
-}
+#equip-ask-modal,
+#equip-prompt-modal,
+#forge-ask-modal,
+#unlock-ask-modal { z-index: 7; }
 
 .modal[hidden] { display: none; }
 
@@ -605,7 +622,69 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   letter-spacing: -0.03em;
 }
 
+.inventory li:has(.item-axe) { display: block; padding: 0; }
+
+.item-axe {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+
+.item-axe-name {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+}
+
+.item-strong {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--chalk);
+}
+
+.item-strong .strong-label { color: var(--chalk); }
+
+.item-wild {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-family: var(--body);
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.item-wild span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-axe[aria-current="true"] { color: var(--brass); }
+
+.item-axe .equipped {
+  margin-left: auto;
+  font-family: var(--body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
 .inventory .qty { margin-left: auto; }
+
+.item-axe[aria-current="true"] .qty { margin-left: 12px; }
 
 .dock {
   position: fixed;

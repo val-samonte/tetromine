@@ -30,7 +30,8 @@
     </section>
 
     <section data-screen="sites" class="screen sheet" hidden>
-      <ul class="roster" id="site-list"></ul>
+      <ul class="roster" id="site-open"></ul>
+      <ul class="roster" id="site-locked"></ul>
     </section>
 
     <section data-screen="craft" class="screen sheet" hidden>
@@ -39,6 +40,7 @@
     </section>
 
     <section data-screen="items" class="screen sheet" hidden>
+      <p class="items-empty" id="items-empty" hidden>You do not have any items yet</p>
       <h2 class="inventory-label">Pickaxes</h2>
       <ul class="inventory" id="item-axes"></ul>
       <h2 class="inventory-label">Resources</h2>
@@ -79,9 +81,11 @@
     <div id="end-modal" class="modal" hidden>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="end-title">
         <h2 id="end-title">Stone Quarry</h2>
+        <p class="inventory-label" id="end-result-label">Result</p>
+        <ul class="pack" id="end-result"></ul>
         <button id="end-craft" class="solid-btn" type="button" hidden><span class="craft-wipe" aria-hidden="true"></span><span class="craft-label">New Craftable Pickaxe</span></button>
         <button id="end-again" class="solid-btn" type="button">Try again</button>
-        <button id="end-back" class="text-btn" type="button">Back</button>
+        <button id="end-back" class="text-btn" type="button">End</button>
       </div>
     </div>
 
@@ -94,12 +98,40 @@
       </div>
     </div>
 
-    <div id="pick-modal" class="modal" hidden>
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pick-title">
-        <h2 id="pick-title"></h2>
-        <p class="info-label">Pickaxe</p>
-        <div id="pick-list"></div>
-        <button id="pick-cancel" class="text-btn" type="button">Back</button>
+    <div id="forge-ask-modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="forge-ask-title">
+        <h2 id="forge-ask-title">Pickaxe</h2>
+        <p id="forge-ask-copy">Want to forge a new pickaxe?</p>
+        <button id="forge-ask-yes" class="solid-btn" type="button">Forge</button>
+        <button id="forge-ask-no" class="text-btn" type="button">Not now</button>
+      </div>
+    </div>
+
+    <div id="unlock-ask-modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="unlock-ask-title">
+        <h2 id="unlock-ask-title"></h2>
+        <p id="unlock-ask-copy"></p>
+        <button id="unlock-ask-yes" class="solid-btn" type="button">Proceed</button>
+        <button id="unlock-ask-no" class="text-btn" type="button">Stay</button>
+      </div>
+    </div>
+
+    <div id="equip-ask-modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="equip-ask-title">
+        <h2 id="equip-ask-title">Equip pickaxe</h2>
+        <p id="equip-ask-copy"></p>
+        <button id="equip-ask-yes" class="solid-btn" type="button">Equip</button>
+        <button id="equip-ask-no" class="text-btn" type="button">Keep current</button>
+      </div>
+    </div>
+
+    <div id="equip-prompt-modal" class="modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="equip-prompt-title">
+        <h2 id="equip-prompt-title">Equip a pickaxe</h2>
+        <p>Your pickaxe broke. Equip another one.</p>
+        <button id="equip-prompt-ok" class="solid-btn" type="button">OK</button>
+        <p id="equip-prompt-note" hidden>You can only mine stone blocks.</p>
+        <button id="equip-prompt-simple" class="text-btn" type="button" hidden>Proceed with Simple Pickaxe</button>
       </div>
     </div>
 

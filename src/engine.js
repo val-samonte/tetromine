@@ -42,9 +42,11 @@ export function createProgress(saved) {
     sound: true,
     played: [],
     had: [],
+    equipped: "simple",
+    unlocked: ["quarry"],
   };
   if (!saved || typeof saved !== "object") {
-    progress.played = openSites(progress).map((site) => site.id);
+    progress.played = ["quarry"];
     return progress;
   }
   if (saved.axes && typeof saved.axes === "object") {
@@ -67,10 +69,21 @@ export function createProgress(saved) {
   }
   if (Number.isFinite(saved.mined) && saved.mined > 0) progress.mined = Math.floor(saved.mined);
   if (typeof saved.sound === "boolean") progress.sound = saved.sound;
+  if (Array.isArray(saved.unlocked)) {
+    const ids = saved.unlocked.filter((id) => typeof id === "string" && siteById(id) && id !== "quarry");
+    progress.unlocked = ["quarry", ...ids];
+  } else {
+    progress.unlocked = legacyReachable(progress);
+  }
   if (Array.isArray(saved.played)) {
     progress.played = saved.played.filter((id) => typeof id === "string" && siteById(id));
   } else {
     progress.played = openSites(progress).map((site) => site.id);
+  }
+  if (typeof saved.equipped === "string" && axeById(saved.equipped)) {
+    progress.equipped = saved.equipped;
+  } else {
+    progress.equipped = strongestHeld(progress);
   }
   const had = new Set();
   if (Array.isArray(saved.had)) {
@@ -107,43 +120,77 @@ export function ticketsHeld(progress, axeId) {
   return progress.axes[axeId] ?? 0;
 }
 
-export function axeChoices(progress, siteId) {
-  const site = siteById(siteId);
-  if (!site) return [];
+function legacyCanEnter(progress, site) {
+  if (site.tickets.includes("simple")) return true;
   const primary = axeById(site.tickets[0]);
   const vein = new Set(Object.keys(primary.drops));
   const primaryStrong = new Set(primary.wildcards.filter((id) => vein.has(id)));
   const primaryIndex = PICKAXES.findIndex((axe) => axe.id === primary.id);
-  const choices = [];
   for (const axe of PICKAXES) {
     if (ticketsHeld(progress, axe.id) < 1) continue;
-    if (site.tickets.includes(axe.id)) {
-      choices.push(axe.id);
-      continue;
-    }
+    if (site.tickets.includes(axe.id)) return true;
     const index = PICKAXES.findIndex((item) => item.id === axe.id);
     if (index < primaryIndex) continue;
     const strong = new Set(axe.wildcards.filter((id) => vein.has(id)));
     const covers = [...primaryStrong].every((id) => strong.has(id));
     const extra = [...strong].some((id) => !primaryStrong.has(id));
-    if (covers && extra) choices.push(axe.id);
+    if (covers && extra) return true;
   }
-  return choices;
+  return false;
+}
+
+function legacyReachable(progress) {
+  return SITES.filter((site) => legacyCanEnter(progress, site)).map((site) => site.id);
+}
+
+function strongestHeld(progress) {
+  for (let index = PICKAXES.length - 1; index >= 0; index -= 1) {
+    const id = PICKAXES[index].id;
+    if (id !== "simple" && ticketsHeld(progress, id) >= 1) return id;
+  }
+  return "simple";
+}
+
+export function isUnlocked(progress, siteId) {
+  if (siteId === "quarry") return true;
+  return (progress.unlocked ?? []).includes(siteId);
+}
+
+export function canPayUnlock(progress, siteId) {
+  const site = siteById(siteId);
+  if (!site?.cost || isUnlocked(progress, siteId)) return false;
+  return Object.entries(site.cost).every(([id, need]) => progress.ore[id] >= need);
+}
+
+export function unlockSite(progress, siteId) {
+  if (!canPayUnlock(progress, siteId)) return false;
+  const site = siteById(siteId);
+  for (const [id, need] of Object.entries(site.cost)) progress.ore[id] -= need;
+  progress.unlocked.push(site.id);
+  saveProgress(progress);
+  return true;
+}
+
+export function equip(progress, axeId) {
+  if (!axeById(axeId) || ticketsHeld(progress, axeId) < 1) return false;
+  progress.equipped = axeId;
+  saveProgress(progress);
+  return true;
 }
 
 export function canEnter(progress, siteId) {
-  return axeChoices(progress, siteId).length > 0;
+  if (!isUnlocked(progress, siteId)) return false;
+  return ticketsHeld(progress, progress.equipped || "simple") >= 1;
 }
 
 export function openSites(progress) {
-  return SITES.filter((site) => canEnter(progress, site.id));
+  return SITES.filter((site) => isUnlocked(progress, site.id));
 }
 
-export function enterSite(progress, siteId, ticketId) {
+export function enterSite(progress, siteId) {
+  if (!canEnter(progress, siteId)) return null;
   const site = siteById(siteId);
-  const choices = site ? axeChoices(progress, siteId) : [];
-  const ticket = ticketId ? (choices.includes(ticketId) ? ticketId : null) : choices[0];
-  if (!ticket) return null;
+  const ticket = progress.equipped || "simple";
   if (ticket !== "simple") progress.axes[ticket] -= 1;
   if (!progress.played.includes(site.id)) progress.played.push(site.id);
   saveProgress(progress);
@@ -241,6 +288,7 @@ export function createState(progress, ticket, rng = Math.random, drops = null) {
     bag: [],
     piece: null,
     runResources: 0,
+    runOre: {},
     status: "ready",
     fallAcc: 0,
     lockAcc: 0,
@@ -466,10 +514,12 @@ function settleMine(state) {
   state.falls = moves;
   const groups = new Map();
   for (const row of rows) {
-    const counts = payableCounts(row.mined, row.clearAll);
+    const cells = axe.id === "simple" ? row.mined.filter((cell) => cell.ore === "stone") : row.mined;
+    const counts = payableCounts(cells, axe.id === "simple" ? false : row.clearAll);
     for (const [ore, count] of counts) {
       const pay = payout(state, count);
       state.progress.ore[ore] += pay.total;
+      state.runOre[ore] = (state.runOre[ore] ?? 0) + pay.total;
       state.progress.mined += count;
       const group = groups.get(ore) ?? { ore, amount: 0, doubled: 0, rows: 0 };
       group.amount += pay.total;
@@ -578,6 +628,7 @@ export function startShift(state) {
   state.board = emptyBoard();
   state.piece = null;
   state.runResources = 0;
+  state.runOre = {};
   state.fallAcc = 0;
   state.lockAcc = 0;
   state.lockResets = 0;
@@ -610,6 +661,8 @@ export function resetProgress(progress) {
   progress.sound = sound;
   progress.played = fresh.played;
   progress.had = fresh.had;
+  progress.equipped = fresh.equipped;
+  progress.unlocked = fresh.unlocked;
   saveProgress(progress);
 }
 
