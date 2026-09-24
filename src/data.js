@@ -29,7 +29,6 @@ export const PICKAXES = [
   {
     id: "simple",
     name: "Simple Pickaxe",
-    hardAt: 1500,
     durability: 68,
     drops: { stone: 99, coal: 1 },
     yield: 1,
@@ -42,7 +41,6 @@ export const PICKAXES = [
   {
     id: "stone",
     name: "Stone Pickaxe",
-    hardAt: 1000,
     durability: 36,
     drops: { stone: 80, copper: 20 },
     yield: 1,
@@ -55,7 +53,6 @@ export const PICKAXES = [
   {
     id: "copper",
     name: "Copper Pickaxe",
-    hardAt: 800,
     durability: 80,
     drops: { stone: 35, copper: 50, tin: 15 },
     yield: 1,
@@ -68,7 +65,6 @@ export const PICKAXES = [
   {
     id: "bronze",
     name: "Bronze Pickaxe",
-    hardAt: 650,
     durability: 96,
     drops: { stone: 12, copper: 35, tin: 23, iron: 30 },
     yield: 1,
@@ -81,7 +77,6 @@ export const PICKAXES = [
   {
     id: "iron",
     name: "Iron Pickaxe",
-    hardAt: 500,
     durability: 112,
     drops: { stone: 30, copper: 10, tin: 30, coal: 30 },
     yield: 1,
@@ -94,7 +89,6 @@ export const PICKAXES = [
   {
     id: "steel",
     name: "Steel Pickaxe",
-    hardAt: 400,
     durability: 160,
     drops: { stone: 8, copper: 14, tin: 14, iron: 24, coal: 25, silver: 15 },
     yield: 1,
@@ -107,7 +101,6 @@ export const PICKAXES = [
   {
     id: "silver",
     name: "Silver Pickaxe",
-    hardAt: 320,
     durability: 132,
     drops: { copper: 10, tin: 12, iron: 21, coal: 12, silver: 40, gold: 5 },
     yield: 1,
@@ -121,13 +114,12 @@ export const PICKAXES = [
   {
     id: "mythril",
     name: "Mythril Pickaxe",
-    hardAt: 280,
     durability: 134,
     drops: { copper: 10, tin: 12, iron: 21, coal: 12, silver: 40, gold: 5 },
     yield: 1,
     doubleChance: 0.15,
     wildcards: ["stone"],
-    cost: { silver: 12000, stone: 12000 },
+    cost: { silver: 1000, stone: 1000 },
     enters: "Gold ore is 5%. Silver 40%, iron 21%, coal 12%, copper 10%, tin 12%.",
     note: "A late head. Strong against stone. Lasts longer than silver.",
   },
@@ -181,14 +173,6 @@ export function kicksFor(type, from, to) {
   if (type === "O") return [[0, 0]];
   const table = type === "I" ? I_KICKS : JLSTZ;
   return table[`${from}>${to}`];
-}
-
-const GRAVITY_EASY = 1000;
-const GRAVITY_HARD = 180;
-
-export function gravityFor(resources, hardAt) {
-  const t = Math.min(1, Math.max(0, resources) / hardAt);
-  return Math.round(GRAVITY_EASY - t * t * (GRAVITY_EASY - GRAVITY_HARD));
 }
 
 // Fall interval (ms) by durability spent. Segments lerp in log space.

@@ -19,7 +19,6 @@ import {
   canEnter,
   canForge,
   canPayUnlock,
-  createProgress,
   createState,
   enterSite,
   equip,
@@ -64,7 +63,6 @@ const RAINBOW_MS = 100;
 
 let screen = "title";
 let state = null;
-let rainbowAxes = new Set();
 let rainbowTick = 0;
 let rainbowTimer = 0;
 let craftAnim = null;
@@ -301,7 +299,6 @@ function showScreen(next) {
   closeLeaveAsk();
   if (next === "craft" && !craftNavOpen()) next = "sites";
   if (next === "items" && !itemsNavOpen()) next = "sites";
-  if (next !== "craft") rainbowAxes = new Set();
   screen = next;
   document.querySelectorAll("[data-screen]").forEach((section) => {
     section.hidden = section.dataset.screen !== next;
@@ -1120,7 +1117,6 @@ function actOnce(action) {
 function handleEvent(event) {
   view.onEvent(event);
   if (event.type === "locked") audio.blip(150, 0.05);
-  if (event.type === "mixed") audio.blip(90, 0.08);
   if (event.type === "burst") audio.blip(210 + event.chain * 90, 0.08);
   if (event.type === "mine") {
     const chord = event.lines >= 4 ? 660 : event.lines === 3 ? 554 : 440;
@@ -1241,7 +1237,6 @@ document.querySelector("#settings-erase").addEventListener("click", () => {
 
 document.querySelector("#end-back").addEventListener("click", leaveShaft);
 document.querySelector("#end-craft").addEventListener("click", () => {
-  rainbowAxes = new Set(craftableAxes().map((axe) => axe.id));
   if (state) state.status = "left";
   held.left = false;
   held.right = false;
@@ -1472,9 +1467,16 @@ requestAnimationFrame(loop);
 boot();
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js");
-  });
+  if (import.meta.env.PROD) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js");
+    });
+  } else {
+    // A caching worker would serve stale Vite modules in dev.
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) registration.unregister();
+    });
+  }
 }
 
 window.addEventListener("popstate", () => {

@@ -39,7 +39,6 @@ export function createProgress(saved) {
     axes: emptyAxes(),
     ore: Object.fromEntries(ORES.map((item) => [item.id, 0])),
     found: [],
-    bestScore: 0,
     mined: 0,
     sound: true,
     played: [],
@@ -76,9 +75,6 @@ export function createProgress(saved) {
     if (progress.ore[item.id] > 0) found.add(item.id);
   }
   progress.found = [...found];
-  if (Number.isFinite(saved.bestScore) && saved.bestScore > 0) {
-    progress.bestScore = Math.floor(saved.bestScore);
-  }
   if (Number.isFinite(saved.mined) && saved.mined > 0) progress.mined = Math.floor(saved.mined);
   if (typeof saved.sound === "boolean") progress.sound = saved.sound;
   if (Array.isArray(saved.unlocked)) {
@@ -147,26 +143,6 @@ export function axeFound(progress, axeId) {
   if (axeId === "simple") return true;
   if ((progress.had ?? []).includes(axeId)) return true;
   return ticketsHeld(progress, axeId) >= 1;
-}
-
-/** Known unlock costs are all affordable (unknown ores ignored). */
-export function knownUnlockReady(progress, siteId) {
-  const site = siteById(siteId);
-  if (!site?.cost || isUnlocked(progress, siteId)) return false;
-  const known = Object.entries(site.cost).filter(([id]) => oreFound(progress, id));
-  if (known.length === 0) return false;
-  return known.every(([id, need]) => progress.ore[id] >= need);
-}
-
-/** Known forge costs are all affordable (unknown ores/axes ignored). */
-export function knownForgeReady(progress, axeId) {
-  const axe = axeById(axeId);
-  if (!axe?.cost) return false;
-  const knownOre = Object.entries(axe.cost).filter(([id]) => oreFound(progress, id));
-  const knownAxe = Object.entries(axe.spendAxes ?? {}).filter(([id]) => axeFound(progress, id));
-  if (knownOre.length === 0 && knownAxe.length === 0) return false;
-  if (!knownOre.every(([id, need]) => progress.ore[id] >= need)) return false;
-  return knownAxe.every(([id, need]) => ticketsHeld(progress, id) >= need);
 }
 
 function legacyCanEnter(progress, site) {
@@ -363,17 +339,6 @@ export function createState(progress, ticket, rng = Math.random, drops = null) {
   return state;
 }
 
-export function ghostY(state) {
-  if (!state.piece) return null;
-  let y = state.piece.y;
-  const probe = { ...state.piece };
-  while (true) {
-    probe.y = y + 1;
-    if (collides(state.board, worldCells(probe))) return y;
-    y += 1;
-  }
-}
-
 function canMove(state, dx, dy, rotation = state.piece.r) {
   const probe = { ...state.piece, r: rotation, x: state.piece.x + dx, y: state.piece.y + dy };
   return !collides(state.board, worldCells(probe));
@@ -526,10 +491,6 @@ function armBurst(state) {
   };
 }
 
-function stuckRows() {
-  return [];
-}
-
 function payout(state, count) {
   const axe = axeById(state.ticket);
   let total = 0;
@@ -632,16 +593,11 @@ function lockPiece(state) {
     return events;
   }
 
-  const wildcards = axeById(state.ticket).wildcards;
-  const beforeStuck = new Set(stuckRows(state.board, wildcards));
   for (const cell of cells) state.board[cell.y][cell.x] = cell.ore;
   state.piece = null;
   events.push({ type: "locked", cells: cells.map((cell) => ({ x: cell.x, y: cell.y })) });
 
-  const fresh = stuckRows(state.board, wildcards).filter((y) => !beforeStuck.has(y));
-  if (fresh.length > 0) events.push({ type: "mixed", rows: fresh });
-
-  const pending = mineFullRows(state.board, wildcards).mined;
+  const pending = mineFullRows(state.board, axeById(state.ticket).wildcards).mined;
   if (pending.length > 0) {
     state.clearWave = 0;
     state.clearGone = [];
@@ -717,7 +673,6 @@ export function resetProgress(progress) {
   progress.axes = fresh.axes;
   progress.ore = fresh.ore;
   progress.found = fresh.found;
-  progress.bestScore = 0;
   progress.mined = 0;
   progress.sound = sound;
   progress.played = fresh.played;

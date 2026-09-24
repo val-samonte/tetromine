@@ -16,8 +16,6 @@ import {
   orientedCells,
   oreFound,
   noteOreFound,
-  knownUnlockReady,
-  knownForgeReady,
   resolveClear,
   rollOre,
   startShift,
@@ -51,7 +49,7 @@ test("forge costs keep Melvor bar ratios", () => {
   assert.equal(byId.steel.cost.coal, byId.steel.cost.iron * 2);
   assert.deepEqual(byId.silver.cost, { silver: 40 });
   assert.deepEqual(byId.silver.spendAxes, { steel: 1 });
-  assert.deepEqual(byId.mythril.cost, { silver: 12000, stone: 12000 });
+  assert.deepEqual(byId.mythril.cost, { silver: 1000, stone: 1000 });
   assert.deepEqual(byId.mythril.wildcards, ["stone"]);
   assert.equal(byId.simple.cost, null);
 });
@@ -68,7 +66,7 @@ test("forging silver spends a steel pickaxe", () => {
   assert.equal(progress.axes.silver, 1);
 });
 
-test("found ores stick after spending, and known costs tease unlock/forge", () => {
+test("found ores stick after spending", () => {
   const progress = createProgress(null);
   assert.equal(oreFound(progress, "stone"), false);
   noteOreFound(progress, "stone");
@@ -76,21 +74,11 @@ test("found ores stick after spending, and known costs tease unlock/forge", () =
   assert.equal(oreFound(progress, "stone"), true);
   assert.equal(oreFound(progress, "silver"), false);
   assert.equal(canPayUnlock(progress, "gold"), false);
-  assert.equal(knownUnlockReady(progress, "gold"), true);
 
   progress.ore.stone = 0;
   const reloaded = createProgress(progress);
   assert.equal(oreFound(reloaded, "stone"), true);
   assert.equal(oreFound(reloaded, "silver"), false);
-
-  const forgeProgress = createProgress(null);
-  noteOreFound(forgeProgress, "silver");
-  forgeProgress.ore.silver = 40;
-  assert.equal(canForge(forgeProgress, "silver"), false);
-  assert.equal(knownForgeReady(forgeProgress, "silver"), true);
-  forgeProgress.had = ["steel"];
-  forgeProgress.axes.steel = 0;
-  assert.equal(knownForgeReady(forgeProgress, "silver"), false);
 });
 
 test("a site unlocks by spending ore, and enter spends the equipped pickaxe", () => {
