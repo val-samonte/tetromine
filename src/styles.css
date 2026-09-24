@@ -89,7 +89,7 @@ button { cursor: pointer; }
 .icon-btn[aria-pressed="false"] svg path:nth-child(2),
 .icon-btn[aria-pressed="false"] svg path:nth-child(3) { opacity: 0.25; }
 
-h1, h2, .site-name, .axe-name, .shaft-axe {
+h1, h2, .site-name, .axe-name {
   font-family: var(--display);
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -326,6 +326,11 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
 
 #site-info-body .info-label:not(:first-child) { margin-top: 18px; }
 
+.info-value {
+  margin: 8px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .info-axes,
 .info-ores {
   list-style: none;
@@ -529,8 +534,49 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
 
 .shaft-axe {
   margin: 0;
-  font-size: 1.7rem;
-  line-height: 0.95;
+  font-family: var(--body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.2;
+}
+
+.durability {
+  --spent: 0;
+  --spent-color: #e4b15a;
+  --pulse-ms: 1200ms;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: 6px;
+  margin: 4px 0 10px;
+  overflow: hidden;
+  background: #1a1612;
+}
+
+.durability-spent {
+  display: block;
+  flex: 0 0 auto;
+  width: calc(var(--spent) * 50%);
+  background: var(--spent-color);
+  opacity: 0.85;
+  animation: durability-pulse var(--pulse-ms) ease-in-out infinite alternate;
+}
+
+.durability-remain {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #6a5c48;
+}
+
+@keyframes durability-pulse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .durability-spent { animation: none; opacity: 0.85; }
 }
 
 .strong-label {
@@ -798,7 +844,7 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   .side { gap: 1.25rem; }
   .side h2 { font-size: 1.2rem; line-height: 0.95; }
   #next { width: min(5.6rem, 100%); }
-  .shaft-axe { font-size: 1.2rem; }
+  .shaft-axe { font-size: 0.95rem; }
   .strong-label { font-size: 0.72rem; letter-spacing: 0.02em; }
   .strong .swatch { display: block; width: 14px; height: 14px; flex-basis: 14px; }
   .side .pack { gap: 4px; font-size: 0.78rem; }
@@ -824,18 +870,19 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   .shaft-screen {
     --ctrl-x: 1.5rem;
     --stick-size: min(160px, calc((100vw - 2 * var(--ctrl-x) - 12px) / 2));
-    --ctrl-top: 24px;
+    --ctrl-top: 40px;
+    --ctrl-bottom: max(24px, env(safe-area-inset-bottom));
     --next-min: 64px;
     --next-max: 90px;
     --next-size: var(--next-max);
-    --ctrl-min: calc(var(--stick-size) + var(--ctrl-top) + max(0.75rem, env(safe-area-inset-bottom)));
+    --ctrl-min: calc(var(--stick-size) + var(--ctrl-top));
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto var(--next-size) minmax(0, 1fr);
     grid-template-rows: auto auto minmax(var(--ctrl-min), 1fr);
     align-content: stretch;
     gap: 12px 0.5rem;
     height: 100dvh;
-    padding: max(12px, env(safe-area-inset-top)) 0.75rem 0;
+    padding: max(12px, env(safe-area-inset-top)) 0.75rem var(--ctrl-bottom);
     overflow: hidden;
   }
 
@@ -920,8 +967,8 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   }
 
   .shaft-screen .shaft-axe {
-    font-size: 1.15rem;
-    line-height: 0.95;
+    font-size: 0.95rem;
+    line-height: 1.2;
   }
 
   .shaft-screen .strong-label {
@@ -961,8 +1008,8 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   }
 
   .shaft-screen .touch {
-    --plant-size: calc(var(--stick-size) * 104 / 160);
-    --line-size: calc(var(--stick-size) * 47 / 160);
+    --plant-size: calc(var(--stick-size) * 92 / 160);
+    --line-size: calc(var(--stick-size) * 78 / 160);
     display: block;
     position: relative;
     z-index: 2;
@@ -979,8 +1026,8 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   .touch-stick,
   .touch-actions {
     position: absolute;
-    top: max(0px, calc((100% - var(--stick-size) - max(0.75rem, env(safe-area-inset-bottom))) / 2));
-    bottom: auto;
+    top: auto;
+    bottom: 0;
     width: var(--stick-size);
     height: var(--stick-size);
   }
@@ -1032,16 +1079,17 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
 
   .touch button.touch-spin {
     position: absolute;
-    left: 50%;
-    top: 50%;
+    left: auto;
+    right: 0;
+    top: 0;
     width: var(--plant-size);
     height: var(--plant-size);
     border-radius: 999px;
-    transform: translate(-50%, -50%);
+    transform: none;
   }
 
   .touch button.touch-spin:active {
-    transform: translate(-50%, -50%) scale(0.96);
+    transform: scale(0.96);
   }
 
   .touch button.touch-drop {
@@ -1065,8 +1113,8 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
   .shaft-screen {
     position: relative;
     --stick-size: 160px;
-    --plant-size: calc(var(--stick-size) * 104 / 160);
-    --line-size: calc(var(--stick-size) * 47 / 160);
+    --plant-size: calc(var(--stick-size) * 92 / 160);
+    --line-size: calc(var(--stick-size) * 78 / 160);
     align-items: stretch;
     padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     overflow: hidden;
@@ -1154,7 +1202,7 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
     text-align: right;
   }
 
-  .shaft-screen .shaft-axe { font-size: 1.15rem; }
+  .shaft-screen .shaft-axe { font-size: 0.95rem; }
 
   .shaft-screen .strong-label { display: none; }
 
@@ -1249,24 +1297,25 @@ h1, h2, .site-name, .axe-name, .shaft-axe {
 
   .shaft-screen .touch button.touch-spin {
     position: absolute;
-    left: 50%;
-    top: 50%;
+    left: auto;
+    right: 0;
+    top: 0;
     width: var(--plant-size);
     height: var(--plant-size);
     border-radius: 999px;
-    transform: translate(-50%, -50%);
+    transform: none;
   }
 
   .shaft-screen .touch button.touch-spin:active {
-    transform: translate(-50%, -50%) scale(0.96);
+    transform: scale(0.96);
   }
 
   .shaft-screen .touch button.touch-drop {
     position: absolute;
-    top: 0;
-    right: 0;
-    bottom: auto;
-    left: auto;
+    top: auto;
+    right: auto;
+    bottom: 0;
+    left: 0;
     width: var(--line-size);
     height: var(--line-size);
     border-radius: 999px;

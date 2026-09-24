@@ -2,12 +2,14 @@ import "./styles.css";
 import {
   ARR,
   DAS,
+  SOFT_DROP_MS,
   ORES,
   ORE_BY_ID,
   PICKAXES,
   axeById,
   costEntries,
   axeSpendEntries,
+  durabilitySpent,
   dropList,
   siteById,
   siteForTicket,
@@ -527,6 +529,12 @@ function openAxeInfo(axeId) {
   document.querySelector("#site-info-title").textContent = axe.name;
   const body = document.querySelector("#site-info-body");
   body.replaceChildren();
+  const durabilityLabel = document.createElement("p");
+  durabilityLabel.className = "info-label";
+  durabilityLabel.textContent = "Durability";
+  const durability = document.createElement("p");
+  durability.className = "info-value";
+  durability.textContent = String(axe.durability);
   const label = document.createElement("p");
   label.className = "info-label";
   label.textContent = "Strong against";
@@ -549,7 +557,7 @@ function openAxeInfo(axeId) {
       list.append(item);
     }
   }
-  body.append(label, list);
+  body.append(durabilityLabel, durability, label, list);
   siteModal.hidden = false;
   document.querySelector("#site-info-close").focus();
 }
@@ -888,8 +896,9 @@ function begin(siteId) {
 function renderShaftHead() {
   const axe = axeById(state.ticket);
   document.querySelector("#shaft-axe").textContent = axe.name;
+  paintDurability();
   const list = document.querySelector("#shaft-strong");
-  const label = list.previousElementSibling;
+  const label = document.querySelector(".side-block .strong-label");
   list.replaceChildren();
   if (axe.wildcards.length === 0) {
     list.hidden = true;
@@ -909,6 +918,23 @@ function renderShaftHead() {
     item.append(swatch);
     list.append(item);
   }
+}
+
+function paintDurability() {
+  const gauge = document.querySelector("#shaft-durability");
+  if (!gauge) return;
+  if (!state || screen !== "shaft") {
+    gauge.hidden = true;
+    return;
+  }
+  const spent = durabilitySpent(state);
+  const yellow = [228, 177, 90];
+  const red = [209, 90, 74];
+  const color = yellow.map((ch, i) => Math.round(ch + (red[i] - ch) * spent));
+  gauge.hidden = false;
+  gauge.style.setProperty("--spent", String(spent));
+  gauge.style.setProperty("--spent-color", `rgb(${color[0]}, ${color[1]}, ${color[2]})`);
+  gauge.style.setProperty("--pulse-ms", `${Math.round(1200 - spent * 920)}ms`);
 }
 
 function oreCountLabel(amount) {
@@ -943,6 +969,7 @@ function renderShaftPack() {
 }
 
 function syncShaft() {
+  paintDurability();
   for (const qty of document.querySelectorAll("#shaft-pack [data-ore]")) {
     const amount = progress.ore[qty.dataset.ore];
     qty.textContent = oreCountLabel(amount);
@@ -1097,8 +1124,8 @@ function updateHeld(dt) {
   }
   if (held.soft) {
     softTime += dt;
-    while (softTime >= 45) {
-      softTime -= 45;
+    while (softTime >= SOFT_DROP_MS) {
+      softTime -= SOFT_DROP_MS;
       const result = queueAction(state, "soft");
       if (!result.accepted) break;
     }
@@ -1321,7 +1348,7 @@ function applyStick(dir) {
   else if (dir === "right") pressHorizontal(1);
   else if (dir === "soft") {
     held.soft = true;
-    softTime = 45;
+    softTime = SOFT_DROP_MS;
   } else actOnce("ccw");
 }
 
@@ -1395,7 +1422,7 @@ document.addEventListener("keydown", (event) => {
   else if (action === "right") pressHorizontal(1);
   else if (action === "soft") {
     held.soft = true;
-    softTime = 45;
+    softTime = SOFT_DROP_MS;
   } else actOnce(action);
 });
 

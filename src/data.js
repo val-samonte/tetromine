@@ -4,7 +4,7 @@
 // Coal Seam is tin 30%, coal 30%,
 // copper 10%, stone 30%. Silver Lode is stone 8%, copper 14%, tin 14%,
 // iron 24%, coal 25%, silver 15%. Gold Reef has no stone. Gold is 5%,
-// silver 40%, iron 21%, coal 10%, copper 12%, tin 12%.
+// silver 40%, iron 21%, coal 12%, copper 10%, tin 12%.
 //
 // Pickaxe recipes use Melvor bar ratios, scaled so a pure row of 10 is the unit:
 // bronze 1 copper : 1 tin, iron bar 1 iron, steel 1 iron : 2 coal,
@@ -30,6 +30,7 @@ export const PICKAXES = [
     id: "simple",
     name: "Simple Pickaxe",
     hardAt: 1500,
+    durability: 34,
     drops: { stone: 99, coal: 1 },
     yield: 1,
     doubleChance: 0,
@@ -42,6 +43,7 @@ export const PICKAXES = [
     id: "stone",
     name: "Stone Pickaxe",
     hardAt: 1000,
+    durability: 18,
     drops: { stone: 80, copper: 20 },
     yield: 1,
     doubleChance: 0,
@@ -54,6 +56,7 @@ export const PICKAXES = [
     id: "copper",
     name: "Copper Pickaxe",
     hardAt: 800,
+    durability: 40,
     drops: { stone: 35, copper: 50, tin: 15 },
     yield: 1,
     doubleChance: 0.05,
@@ -66,6 +69,7 @@ export const PICKAXES = [
     id: "bronze",
     name: "Bronze Pickaxe",
     hardAt: 650,
+    durability: 48,
     drops: { stone: 12, copper: 35, tin: 23, iron: 30 },
     yield: 1,
     doubleChance: 0.08,
@@ -78,6 +82,7 @@ export const PICKAXES = [
     id: "iron",
     name: "Iron Pickaxe",
     hardAt: 500,
+    durability: 56,
     drops: { stone: 30, copper: 10, tin: 30, coal: 30 },
     yield: 1,
     doubleChance: 0.1,
@@ -90,6 +95,7 @@ export const PICKAXES = [
     id: "steel",
     name: "Steel Pickaxe",
     hardAt: 400,
+    durability: 80,
     drops: { stone: 8, copper: 14, tin: 14, iron: 24, coal: 25, silver: 15 },
     yield: 1,
     doubleChance: 0.12,
@@ -102,14 +108,28 @@ export const PICKAXES = [
     id: "silver",
     name: "Silver Pickaxe",
     hardAt: 320,
-    drops: { copper: 12, tin: 12, iron: 21, coal: 10, silver: 40, gold: 5 },
+    durability: 66,
+    drops: { copper: 10, tin: 12, iron: 21, coal: 12, silver: 40, gold: 5 },
     yield: 1,
     doubleChance: 0.15,
     wildcards: ["silver"],
     cost: { silver: 40 },
     spendAxes: { steel: 1 },
-    enters: "Gold ore is 5%. Silver 40%, iron 21%, coal 10%, copper 12%, tin 12%.",
+    enters: "Gold ore is 5%. Silver 40%, iron 21%, coal 12%, copper 10%, tin 12%.",
     note: "Melvor silver bar is 1 silver ore. Needs a Steel Pickaxe. 15% of mined blocks pay double.",
+  },
+  {
+    id: "mythril",
+    name: "Mythril Pickaxe",
+    hardAt: 280,
+    durability: 67,
+    drops: { copper: 10, tin: 12, iron: 21, coal: 12, silver: 40, gold: 5 },
+    yield: 1,
+    doubleChance: 0.15,
+    wildcards: ["stone"],
+    cost: { silver: 12000, stone: 12000 },
+    enters: "Gold ore is 5%. Silver 40%, iron 21%, coal 12%, copper 10%, tin 12%.",
+    note: "A late head. Strong against stone. Lasts longer than silver.",
   },
 ];
 
@@ -120,6 +140,7 @@ export const CLEAR_FALL = 220;
 export const CLEAR_LAND = 160;
 export const DAS = 170;
 export const ARR = 30;
+export const SOFT_DROP_MS = 45;
 
 export const SHAPES = {
   T: { pivot: [1, 1], cells: [[1, 0], [0, 1], [1, 1], [2, 1]] },
@@ -168,6 +189,34 @@ const GRAVITY_HARD = 180;
 export function gravityFor(resources, hardAt) {
   const t = Math.min(1, Math.max(0, resources) / hardAt);
   return Math.round(GRAVITY_EASY - t * t * (GRAVITY_EASY - GRAVITY_HARD));
+}
+
+// Fall interval (ms) by durability spent. Segments lerp in log space.
+// Exact 100% spent snaps to soft-drop / turbo speed; the curve only approaches 100ms.
+const GRAVITY_SPENT = [
+  [0, 1000],
+  [0.25, 700],
+  [0.5, 400],
+  [0.75, 200],
+  [1, 100],
+];
+
+export function gravityForSpent(spent) {
+  const t = Math.min(1, Math.max(0, spent));
+  if (t >= 1) return SOFT_DROP_MS;
+  for (let i = 0; i < GRAVITY_SPENT.length - 1; i += 1) {
+    const [s0, g0] = GRAVITY_SPENT[i];
+    const [s1, g1] = GRAVITY_SPENT[i + 1];
+    if (t > s1) continue;
+    const u = s1 === s0 ? 1 : (t - s0) / (s1 - s0);
+    return Math.round(Math.exp(Math.log(g0) + (Math.log(g1) - Math.log(g0)) * u));
+  }
+  return GRAVITY_SPENT[GRAVITY_SPENT.length - 1][1];
+}
+
+export function durabilitySpent(state) {
+  const max = state.durabilityMax || 1;
+  return Math.min(1, Math.max(0, 1 - (state.durabilityLeft ?? 0) / max));
 }
 
 export function costEntries(cost) {
@@ -228,14 +277,14 @@ export const SITES = [
     id: "silver",
     name: "Silver Lode",
     tickets: ["steel"],
-    cost: { stone: 2000, iron: 80, coal: 160 },
+    cost: { stone: 1000, iron: 80, coal: 160 },
     place: "Silver shows in the wall. Coal is the common rock.",
   },
   {
     id: "gold",
     name: "Gold Reef",
     tickets: ["silver"],
-    cost: { stone: 3000, silver: 200 },
+    cost: { stone: 2000, silver: 200 },
     place: "Gold shows in the wall. Silver is the common metal.",
   },
 ];

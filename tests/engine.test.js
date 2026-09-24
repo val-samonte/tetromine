@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ORES, PICKAXES, SITES, axeById, gravityFor, CLEAR_BURST, CLEAR_FALL, CLEAR_LAND } from "../src/data.js";
+import { ORES, PICKAXES, SITES, axeById, gravityForSpent, durabilitySpent, CLEAR_BURST, CLEAR_FALL, CLEAR_LAND } from "../src/data.js";
 import {
   canEnter,
   canForge,
@@ -33,7 +33,7 @@ test("every vein sums to 100 and the opening tables match the brief", () => {
   assert.deepEqual(PICKAXES.find((axe) => axe.id === "bronze").drops, { stone: 12, copper: 35, tin: 23, iron: 30 });
   assert.deepEqual(PICKAXES.find((axe) => axe.id === "iron").drops, { stone: 30, copper: 10, tin: 30, coal: 30 });
   assert.deepEqual(PICKAXES.find((axe) => axe.id === "steel").drops, { stone: 8, copper: 14, tin: 14, iron: 24, coal: 25, silver: 15 });
-  assert.deepEqual(PICKAXES.find((axe) => axe.id === "silver").drops, { copper: 12, tin: 12, iron: 21, coal: 10, silver: 40, gold: 5 });
+  assert.deepEqual(PICKAXES.find((axe) => axe.id === "silver").drops, { copper: 10, tin: 12, iron: 21, coal: 12, silver: 40, gold: 5 });
 });
 
 test("forge costs keep Melvor bar ratios", () => {
@@ -46,6 +46,8 @@ test("forge costs keep Melvor bar ratios", () => {
   assert.equal(byId.steel.cost.coal, byId.steel.cost.iron * 2);
   assert.deepEqual(byId.silver.cost, { silver: 40 });
   assert.deepEqual(byId.silver.spendAxes, { steel: 1 });
+  assert.deepEqual(byId.mythril.cost, { silver: 12000, stone: 12000 });
+  assert.deepEqual(byId.mythril.wildcards, ["stone"]);
   assert.equal(byId.simple.cost, null);
 });
 
@@ -395,6 +397,7 @@ test("each pickaxe wildcards different ores", () => {
   assert.deepEqual(byId.bronze.wildcards, ["copper", "tin"]);
   assert.deepEqual(byId.iron.wildcards, ["stone", "copper", "iron"]);
   assert.deepEqual(byId.silver.wildcards, ["silver"]);
+  assert.deepEqual(byId.mythril.wildcards, ["stone"]);
 
   const progress = createProgress(null);
   const state = createState(progress, "bronze", () => 0);
@@ -440,19 +443,54 @@ test("a piece cannot walk through the wall", () => {
   assert.equal(state.piece.x, 0);
 });
 
-test("a pickaxe gets faster as this run's resources pile up", () => {
-  const stone = PICKAXES.find((axe) => axe.id === "stone");
-  assert.equal(stone.hardAt, 1000);
-  assert.equal(gravityFor(0, stone.hardAt), 1000);
-  assert.equal(gravityFor(stone.hardAt, stone.hardAt), 180);
-  assert.ok(gravityFor(500, stone.hardAt) < 1000);
-  assert.ok(gravityFor(500, stone.hardAt) > 180);
+test("durability ranks steel highest and stone lowest", () => {
+  const byId = Object.fromEntries(PICKAXES.map((axe) => [axe.id, axe]));
+  assert.equal(byId.steel.durability, 80);
+  assert.equal(byId.mythril.durability, 67);
+  assert.equal(byId.silver.durability, 66);
+  assert.equal(byId.iron.durability, 56);
+  assert.equal(byId.bronze.durability, 48);
+  assert.equal(byId.copper.durability, 40);
+  assert.equal(byId.simple.durability, 34);
+  assert.equal(byId.stone.durability, 18);
+  assert.ok(byId.steel.durability > byId.mythril.durability);
+  assert.ok(byId.mythril.durability > byId.silver.durability);
+  assert.ok(byId.silver.durability > byId.iron.durability);
+  assert.ok(byId.iron.durability > byId.bronze.durability);
+  assert.ok(byId.bronze.durability > byId.copper.durability);
+  assert.ok(byId.copper.durability > byId.simple.durability);
+  assert.ok(byId.simple.durability > byId.stone.durability);
+});
+
+test("a mine evaluation spends one durability even for many rows", () => {
   const progress = createProgress(null);
   const state = createState(progress, "stone", () => 0);
+  assert.equal(state.durabilityLeft, 18);
+  assert.equal(state.durabilityMax, 18);
+  state.board[17] = Array(10).fill("stone");
+  state.board[18] = Array(10).fill("stone");
   state.board[19] = Array(10).fill("stone");
   resolveClear(state);
-  assert.equal(state.runResources, 10);
-  assert.equal(state.runOre.stone, 10);
+  assert.equal(state.durabilityLeft, 17);
+  assert.equal(state.runOre.stone, 30);
+});
+
+test("fall speed follows durability spent, and empty still plays at max speed", () => {
+  assert.equal(gravityForSpent(0), 1000);
+  assert.equal(gravityForSpent(1), 45);
+  assert.ok(gravityForSpent(0.999) > 45);
+  assert.ok(gravityForSpent(0.5) < 700);
+  assert.ok(gravityForSpent(0.5) > 200);
+  const progress = createProgress(null);
+  const state = createState(progress, "stone", () => 0);
+  startShift(state);
+  state.durabilityLeft = 0;
+  assert.equal(durabilitySpent(state), 1);
+  assert.equal(gravityForSpent(durabilitySpent(state)), 45);
+  assert.equal(state.status, "playing");
+  const events = tick(state, 100);
+  assert.equal(state.status, "playing");
+  assert.ok(Array.isArray(events));
 });
 
 test("ore ids cover the Melvor line through gold", () => {

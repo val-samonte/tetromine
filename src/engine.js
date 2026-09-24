@@ -12,7 +12,8 @@ import {
   SHAPES,
   SITES,
   axeById,
-  gravityFor,
+  gravityForSpent,
+  durabilitySpent,
   kicksFor,
   siteById,
 } from "./data.js";
@@ -280,6 +281,8 @@ function ensureQueue(state) {
 }
 
 export function createState(progress, ticket, rng = Math.random, drops = null) {
+  const axe = axeById(ticket);
+  const durability = axe?.durability ?? 1;
   const state = {
     progress,
     ticket,
@@ -291,6 +294,8 @@ export function createState(progress, ticket, rng = Math.random, drops = null) {
     piece: null,
     runResources: 0,
     runOre: {},
+    durabilityMax: durability,
+    durabilityLeft: durability,
     status: "ready",
     fallAcc: 0,
     lockAcc: 0,
@@ -531,6 +536,7 @@ function settleMine(state) {
     }
   }
   for (const group of groups.values()) state.runResources += group.amount;
+  state.durabilityLeft = Math.max(0, (state.durabilityLeft ?? 0) - 1);
   saveProgress(state.progress);
   return {
     type: "mine",
@@ -723,7 +729,7 @@ export function tick(state, dt) {
   if (!grounded) {
     state.lockAcc = 0;
     state.fallAcc += dt;
-    const gravity = gravityFor(state.runResources, axeById(state.ticket).hardAt);
+    const gravity = gravityForSpent(durabilitySpent(state));
     while (state.fallAcc >= gravity) {
       state.fallAcc -= gravity;
       if (!tryMove(state, 0, 1, { fall: true })) break;

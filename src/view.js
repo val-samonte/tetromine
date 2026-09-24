@@ -258,7 +258,14 @@ export function createView(shaft, next) {
       const touch = screen.querySelector(".touch");
       const ctrlMin = touch ? Number.parseFloat(getComputedStyle(touch).minHeight) || 0 : 0;
       const title = screen.querySelector(".shaft-bar");
-      const titleH = title && getComputedStyle(title).display !== "contents" ? title.offsetHeight : (screen.querySelector("#shaft-site")?.offsetHeight || 0);
+      const titleCandidates = title && getComputedStyle(title).display !== "contents"
+        ? [title.offsetHeight]
+        : [
+            screen.querySelector("#shaft-site")?.offsetHeight || 0,
+            screen.querySelector("#shaft-leave")?.offsetHeight || 0,
+            screen.querySelector("#shaft-settings")?.offsetHeight || 0,
+          ];
+      const titleH = Math.max(0, ...titleCandidates);
       const availableHeight = screen.clientHeight - padY - titleH - rowGap * 2 - ctrlMin;
       const colGap = Number.parseFloat(screenStyle.columnGap) || 0;
       const minNext = Number.parseFloat(screenStyle.getPropertyValue("--next-min")) || 64;
