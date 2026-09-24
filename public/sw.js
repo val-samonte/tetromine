@@ -2,6 +2,9 @@ const SHELL = "tetromine-shell";
 const FONTS = "tetromine-fonts";
 const FONT_HOSTS = new Set(["fonts.googleapis.com", "fonts.gstatic.com"]);
 const NAV_TIMEOUT_MS = 3000;
+// The host varies responses on Origin, and Vite loads the stylesheet in CORS mode,
+// so a strict lookup misses the cached copy and the page renders unstyled offline.
+const MATCH = { ignoreVary: true };
 
 // Every URL index.html pulls in: hashed build output, icons, manifest, font CSS.
 function shellUrls(html) {
@@ -25,7 +28,7 @@ async function refreshShell(html) {
   const wanted = new Set(shellUrls(html).map((url) => new URL(url, self.location.origin).href));
   await cache.put("/", new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }));
   await Promise.all([...wanted].map(async (url) => {
-    if (await cache.match(url)) return;
+    if (await cache.match(url, MATCH)) return;
     const font = FONT_HOSTS.has(new URL(url).hostname);
     const response = await fetch(url, font ? { mode: "cors" } : undefined).catch(() => null);
     if (!response?.ok) return;
@@ -75,13 +78,13 @@ async function navigate(event) {
   });
   const fresh = await Promise.race([network.catch(() => null), timeout]);
   if (fresh) return fresh;
-  const cached = await cache.match("/");
+  const cached = await cache.match("/", MATCH);
   return cached ?? network;
 }
 
 async function cacheFirst(request, name) {
   const cache = await caches.open(name);
-  const cached = await cache.match(request);
+  const cached = await cache.match(request, MATCH);
   if (cached) return cached;
   const response = await fetch(request);
   if (response.ok || response.type === "opaque") await cache.put(request, response.clone());
@@ -90,7 +93,7 @@ async function cacheFirst(request, name) {
 
 async function staleWhileRevalidate(request, name) {
   const cache = await caches.open(name);
-  const cached = await cache.match(request);
+  const cached = await cache.match(request, MATCH);
   const network = fetch(request)
     .then(async (response) => {
       if (response.ok) await cache.put(request, response.clone());

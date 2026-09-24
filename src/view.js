@@ -1,5 +1,5 @@
-import { axeById, COLS, ORE_BY_ID, ROWS } from "./data.js";
-import { orientedCells } from "./engine.js";
+import { axeById, COLS, ORE_BY_ID, ROWS } from "./core/data";
+import { orientedCells } from "./core/engine";
 
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 

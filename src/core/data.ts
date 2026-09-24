@@ -10,10 +10,64 @@
 // bronze 1 copper : 1 tin, iron bar 1 iron, steel 1 iron : 2 coal,
 // silver bar 1 silver. Silver also spends one Steel Pickaxe.
 
+export type OreId = "stone" | "copper" | "tin" | "iron" | "coal" | "silver" | "gold";
+export type AxeId = "simple" | "stone" | "copper" | "bronze" | "iron" | "steel" | "silver" | "mythril";
+/** Pickaxes you forge and hold a count of. The simple pickaxe is free and never runs out. */
+export type CraftedAxeId = Exclude<AxeId, "simple">;
+export type SiteId = "quarry" | "copper" | "tin" | "iron" | "coal" | "silver" | "gold";
+export type PieceType = "T" | "J" | "L" | "S" | "Z" | "O" | "I";
+export type Rotation = 0 | 1 | 2 | 3;
+
+/** Percent weights per ore. Every vein sums to 100. */
+export type Drops = Partial<Record<OreId, number>>;
+export type OreCost = Partial<Record<OreId, number>>;
+export type AxeCost = Partial<Record<CraftedAxeId, number>>;
+export type Point = readonly [number, number];
+
+export interface Ore {
+  id: OreId;
+  name: string;
+  symbol: string;
+  fill: string;
+  deep: string;
+  ink: string;
+  mark: "pit" | "ring" | "tri" | "ingot" | "shard" | "diamond" | "sun";
+}
+
+export interface Pickaxe {
+  id: AxeId;
+  name: string;
+  /** Mine evaluations the head survives in one run. */
+  durability: number;
+  drops: Drops;
+  yield: number;
+  doubleChance: number;
+  /** Ores this head mines out of a mixed row ("Strong against" in the UI). */
+  wildcards: readonly OreId[];
+  cost: OreCost | null;
+  spendAxes?: AxeCost;
+  enters: string;
+  note: string;
+}
+
+export interface Site {
+  id: SiteId;
+  name: string;
+  /** tickets[0] is the pickaxe whose vein the site uses. */
+  tickets: readonly AxeId[];
+  cost: OreCost | null;
+  place: string;
+}
+
+export interface Shape {
+  pivot: Point;
+  cells: readonly Point[];
+}
+
 export const COLS = 10;
 export const ROWS = 20;
 
-export const ORES = [
+export const ORES: readonly Ore[] = [
   { id: "stone", name: "Stone", symbol: "St", fill: "#a89880", deep: "#5e5346", ink: "#1a140e", mark: "pit" },
   { id: "copper", name: "Copper Ore", symbol: "Cu", fill: "#e0703a", deep: "#8a3c16", ink: "#2a1006", mark: "ring" },
   { id: "tin", name: "Tin Ore", symbol: "Sn", fill: "#3fafa4", deep: "#14625c", ink: "#041614", mark: "tri" },
@@ -23,9 +77,9 @@ export const ORES = [
   { id: "gold", name: "Gold Ore", symbol: "Au", fill: "#f0c14a", deep: "#8a6914", ink: "#2a2208", mark: "sun" },
 ];
 
-export const ORE_BY_ID = Object.fromEntries(ORES.map((ore) => [ore.id, ore]));
+export const ORE_BY_ID = Object.fromEntries(ORES.map((ore) => [ore.id, ore])) as Record<OreId, Ore>;
 
-export const PICKAXES = [
+export const PICKAXES: readonly Pickaxe[] = [
   {
     id: "simple",
     name: "Simple Pickaxe",
@@ -134,7 +188,7 @@ export const DAS = 170;
 export const ARR = 30;
 export const SOFT_DROP_MS = 45;
 
-export const SHAPES = {
+export const SHAPES: Readonly<Record<PieceType, Shape>> = {
   T: { pivot: [1, 1], cells: [[1, 0], [0, 1], [1, 1], [2, 1]] },
   J: { pivot: [1, 1], cells: [[0, 0], [0, 1], [1, 1], [2, 1]] },
   L: { pivot: [1, 1], cells: [[2, 0], [0, 1], [1, 1], [2, 1]] },
@@ -144,10 +198,12 @@ export const SHAPES = {
   I: { pivot: [1.5, 1.5], cells: [[0, 1], [1, 1], [2, 1], [3, 1]] },
 };
 
-export const BAG = ["I", "O", "T", "S", "Z", "J", "L"];
+export const BAG: readonly PieceType[] = ["I", "O", "T", "S", "Z", "J", "L"];
+
+type KickTable = Readonly<Record<`${Rotation}>${Rotation}`, readonly Point[]>>;
 
 // Kick offsets, y positive down. Source: Tetris SRS, y flipped from the wiki's y-up tables.
-const JLSTZ = {
+const JLSTZ: Partial<KickTable> = {
   "0>1": [[0, 0], [-1, 0], [-1, -1], [0, 2], [-1, 2]],
   "1>0": [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
   "1>2": [[0, 0], [1, 0], [1, 1], [0, -2], [1, -2]],
@@ -158,7 +214,7 @@ const JLSTZ = {
   "0>3": [[0, 0], [1, 0], [1, -1], [0, 2], [1, 2]],
 };
 
-const I_KICKS = {
+const I_KICKS: Partial<KickTable> = {
   "0>1": [[0, 0], [-2, 0], [1, 0], [-2, 1], [1, -2]],
   "1>0": [[0, 0], [2, 0], [-1, 0], [2, -1], [-1, 2]],
   "1>2": [[0, 0], [-1, 0], [2, 0], [-1, -2], [2, 1]],
@@ -169,15 +225,15 @@ const I_KICKS = {
   "0>3": [[0, 0], [-1, 0], [2, 0], [-1, -2], [2, 1]],
 };
 
-export function kicksFor(type, from, to) {
+export function kicksFor(type: PieceType, from: Rotation, to: Rotation): readonly Point[] {
   if (type === "O") return [[0, 0]];
   const table = type === "I" ? I_KICKS : JLSTZ;
-  return table[`${from}>${to}`];
+  return table[`${from}>${to}`] ?? [[0, 0]];
 }
 
 // Fall interval (ms) by durability spent. Segments lerp in log space.
 // Exact 100% spent snaps to soft-drop / turbo speed; the curve only approaches 100ms.
-const GRAVITY_SPENT = [
+const GRAVITY_SPENT: readonly Point[] = [
   [0, 1000],
   [0.25, 700],
   [0.5, 400],
@@ -185,7 +241,7 @@ const GRAVITY_SPENT = [
   [1, 100],
 ];
 
-export function gravityForSpent(spent) {
+export function gravityForSpent(spent: number): number {
   const t = Math.min(1, Math.max(0, spent));
   if (t >= 1) return SOFT_DROP_MS;
   for (let i = 0; i < GRAVITY_SPENT.length - 1; i += 1) {
@@ -198,30 +254,30 @@ export function gravityForSpent(spent) {
   return GRAVITY_SPENT[GRAVITY_SPENT.length - 1][1];
 }
 
-export function durabilitySpent(state) {
+export function durabilitySpent(state: { durabilityMax: number; durabilityLeft: number }): number {
   const max = state.durabilityMax || 1;
   return Math.min(1, Math.max(0, 1 - (state.durabilityLeft ?? 0) / max));
 }
 
-export function costEntries(cost) {
+export function costEntries(cost: OreCost | null | undefined): { ore: Ore; need: number }[] {
   if (!cost) return [];
   return ORES.filter((ore) => cost[ore.id]).map((ore) => ({
     ore,
-    need: cost[ore.id],
+    need: cost[ore.id] ?? 0,
   }));
 }
 
-export function axeSpendEntries(spendAxes) {
+export function axeSpendEntries(spendAxes: AxeCost | null | undefined): { axe: Pickaxe; need: number }[] {
   if (!spendAxes) return [];
-  return PICKAXES.filter((axe) => spendAxes[axe.id]).map((axe) => ({
+  return PICKAXES.filter((axe) => axe.id !== "simple" && spendAxes[axe.id]).map((axe) => ({
     axe,
-    need: spendAxes[axe.id],
+    need: spendAxes[axe.id as CraftedAxeId] ?? 0,
   }));
 }
 
 // tickets[0] is the vein. cost is the one-time ore spend that unlocks the site.
 // Those costs are double the pickaxe that used to open the site. Quarry stays open.
-export const SITES = [
+export const SITES: readonly Site[] = [
   {
     id: "quarry",
     name: "Stone Quarry",
@@ -273,21 +329,37 @@ export const SITES = [
   },
 ];
 
-export function axeById(id) {
+export function isOreId(id: unknown): id is OreId {
+  return typeof id === "string" && ORES.some((ore) => ore.id === id);
+}
+
+export function isAxeId(id: unknown): id is AxeId {
+  return typeof id === "string" && PICKAXES.some((axe) => axe.id === id);
+}
+
+export function isSiteId(id: unknown): id is SiteId {
+  return typeof id === "string" && SITES.some((site) => site.id === id);
+}
+
+export function axeById(id: AxeId): Pickaxe;
+export function axeById(id: string | null | undefined): Pickaxe | undefined;
+export function axeById(id: string | null | undefined): Pickaxe | undefined {
   return PICKAXES.find((axe) => axe.id === id);
 }
 
-export function siteById(id) {
+export function siteById(id: SiteId): Site;
+export function siteById(id: string | null | undefined): Site | undefined;
+export function siteById(id: string | null | undefined): Site | undefined {
   return SITES.find((site) => site.id === id);
 }
 
-export function siteForTicket(ticket) {
+export function siteForTicket(ticket: AxeId): Site | undefined {
   return SITES.find((site) => site.tickets.includes(ticket));
 }
 
-export function dropList(drops) {
+export function dropList(drops: Drops): { ore: Ore; pct: number }[] {
   return ORES.filter((ore) => drops[ore.id]).map((ore) => ({
     ore,
-    pct: drops[ore.id],
+    pct: drops[ore.id] ?? 0,
   }));
 }

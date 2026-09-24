@@ -14,30 +14,174 @@ import {
   axeById,
   gravityForSpent,
   durabilitySpent,
+  isAxeId,
+  isOreId,
+  isSiteId,
   kicksFor,
   siteById,
-} from "./data.js";
+} from "./data";
+import type {
+  AxeId,
+  CraftedAxeId,
+  Drops,
+  OreId,
+  PieceType,
+  Rotation,
+  Site,
+  SiteId,
+} from "./data";
+
+export type Cell = OreId | null;
+export type Board = Cell[][];
+export type Rng = () => number;
+export type Action = "left" | "right" | "cw" | "ccw" | "hard" | "soft";
+export type BufferedAction = "left" | "right" | "cw" | "ccw";
+export type Status = "ready" | "playing" | "over" | "left";
+export type ClearPhase = "burst" | "fall" | "land" | null;
+
+export interface Progress {
+  axes: Record<CraftedAxeId, number>;
+  ore: Record<OreId, number>;
+  /** Ores ever mined, kept after the pile is spent to zero. */
+  found: OreId[];
+  mined: number;
+  sound: boolean;
+  played: SiteId[];
+  /** Pickaxes ever held, kept after they are spent. */
+  had: CraftedAxeId[];
+  equipped: AxeId;
+  unlocked: SiteId[];
+}
+
+export interface Piece {
+  type: PieceType;
+  ores: OreId[];
+  r: Rotation;
+  x: number;
+  y: number;
+}
+
+export interface PieceCell {
+  x: number;
+  y: number;
+  ore: OreId;
+}
+
+export interface FallMove {
+  x: number;
+  from: number;
+  to: number;
+  ore: OreId;
+}
+
+export interface MineRow {
+  y: number;
+  clearAll: boolean;
+  mined: PieceCell[];
+}
+
+export interface MineGroup {
+  ore: OreId;
+  amount: number;
+  doubled: number;
+  rows: number;
+}
+
+export type GameEvent =
+  | { type: "over" }
+  | { type: "perfect" }
+  | { type: "locked"; cells: { x: number; y: number }[] }
+  | { type: "burst"; cells: PieceCell[]; rows: number[]; chain: number }
+  | MineEvent;
+
+export interface MineEvent {
+  type: "mine";
+  lines: number;
+  perfect: boolean;
+  rows: number[];
+  groups: MineGroup[];
+}
+
+export interface GameState {
+  progress: Progress;
+  ticket: AxeId;
+  /** The site vein. Falls back to the ticket's own drops. */
+  drops: Drops | null;
+  rng: Rng;
+  siteId?: SiteId;
+  board: Board;
+  queue: Piece[];
+  bag: PieceType[];
+  piece: Piece | null;
+  runResources: number;
+  runOre: Partial<Record<OreId, number>>;
+  durabilityMax: number;
+  durabilityLeft: number;
+  status: Status;
+  fallAcc: number;
+  lockAcc: number;
+  lockResets: number;
+  clearLeft: number;
+  clearDuration: number;
+  clearPhase: ClearPhase;
+  clearCells: string[];
+  clearGone: string[];
+  clearPlan: PieceCell[][];
+  clearStep: number;
+  clearWave: number;
+  falls: FallMove[];
+  buffer: BufferedAction | null;
+}
+
+export type EnteredSite = Site & { ticket: AxeId };
+
+/** Where the save lives. Web uses localStorage; native passes its own store. */
+export interface SaveStore {
+  load(): string | null;
+  save(json: string): void;
+}
 
 const SAVE_KEY = "tetris-mine-save-v2";
 
-export function emptyRow() {
-  return Array(COLS).fill(null);
+const browserStore: SaveStore = {
+  load: () => globalThis.localStorage?.getItem(SAVE_KEY) ?? null,
+  save: (json) => globalThis.localStorage?.setItem(SAVE_KEY, json),
+};
+
+let saveStore: SaveStore = browserStore;
+
+export function setSaveStore(store: SaveStore): void {
+  saveStore = store;
 }
 
-export function emptyBoard() {
+type SavedProgress = Partial<Record<keyof Progress, unknown>>;
+
+function entries<K extends string, V>(record: Partial<Record<K, V>>): [K, V][] {
+  return Object.entries(record) as [K, V][];
+}
+
+export function emptyRow(): Cell[] {
+  return Array<Cell>(COLS).fill(null);
+}
+
+export function emptyBoard(): Board {
   return Array.from({ length: ROWS }, emptyRow);
 }
 
-function emptyAxes() {
+function emptyAxes(): Record<CraftedAxeId, number> {
   return Object.fromEntries(
     PICKAXES.filter((axe) => axe.id !== "simple").map((axe) => [axe.id, 0]),
-  );
+  ) as Record<CraftedAxeId, number>;
 }
 
-export function createProgress(saved) {
-  const progress = {
+function isCraftedAxeId(id: unknown): id is CraftedAxeId {
+  return isAxeId(id) && id !== "simple";
+}
+
+export function createProgress(saved: unknown): Progress {
+  const progress: Progress = {
     axes: emptyAxes(),
-    ore: Object.fromEntries(ORES.map((item) => [item.id, 0])),
+    ore: Object.fromEntries(ORES.map((item) => [item.id, 0])) as Record<OreId, number>,
     found: [],
     mined: 0,
     sound: true,
@@ -50,102 +194,107 @@ export function createProgress(saved) {
     progress.played = ["quarry"];
     return progress;
   }
-  if (saved.axes && typeof saved.axes === "object") {
-    for (const id of Object.keys(progress.axes)) {
-      const value = Number(saved.axes[id]);
+  const data = saved as SavedProgress;
+  if (data.axes && typeof data.axes === "object") {
+    const axes = data.axes as Record<string, unknown>;
+    for (const id of Object.keys(progress.axes) as CraftedAxeId[]) {
+      const value = Number(axes[id]);
       if (Number.isFinite(value) && value >= 0) progress.axes[id] = Math.floor(value);
     }
-    if (progress.axes.bronze === 0 && Number(saved.axes.tin) > 0) {
-      progress.axes.bronze = Math.floor(Number(saved.axes.tin));
+    if (progress.axes.bronze === 0 && Number(axes.tin) > 0) {
+      progress.axes.bronze = Math.floor(Number(axes.tin));
     }
   }
-  if (saved.ore && typeof saved.ore === "object") {
+  if (data.ore && typeof data.ore === "object") {
+    const ore = data.ore as Record<string, unknown>;
     for (const item of ORES) {
-      const value = Number(saved.ore[item.id]);
+      const value = Number(ore[item.id]);
       if (Number.isFinite(value) && value >= 0) progress.ore[item.id] = Math.floor(value);
     }
   }
-  const found = new Set();
-  if (Array.isArray(saved.found)) {
-    for (const id of saved.found) {
-      if (typeof id === "string" && ORES.some((ore) => ore.id === id)) found.add(id);
+  const found = new Set<OreId>();
+  if (Array.isArray(data.found)) {
+    for (const id of data.found) {
+      if (isOreId(id)) found.add(id);
     }
   }
   for (const item of ORES) {
     if (progress.ore[item.id] > 0) found.add(item.id);
   }
   progress.found = [...found];
-  if (Number.isFinite(saved.mined) && saved.mined > 0) progress.mined = Math.floor(saved.mined);
-  if (typeof saved.sound === "boolean") progress.sound = saved.sound;
-  if (Array.isArray(saved.unlocked)) {
-    const ids = saved.unlocked.filter((id) => typeof id === "string" && siteById(id) && id !== "quarry");
+  if (typeof data.mined === "number" && Number.isFinite(data.mined) && data.mined > 0) {
+    progress.mined = Math.floor(data.mined);
+  }
+  if (typeof data.sound === "boolean") progress.sound = data.sound;
+  if (Array.isArray(data.unlocked)) {
+    const ids = data.unlocked.filter((id): id is SiteId => isSiteId(id) && id !== "quarry");
     progress.unlocked = ["quarry", ...ids];
   } else {
     progress.unlocked = legacyReachable(progress);
   }
-  if (Array.isArray(saved.played)) {
-    progress.played = saved.played.filter((id) => typeof id === "string" && siteById(id));
+  if (Array.isArray(data.played)) {
+    progress.played = data.played.filter(isSiteId);
   } else {
     progress.played = openSites(progress).map((site) => site.id);
   }
-  if (typeof saved.equipped === "string" && axeById(saved.equipped)) {
-    progress.equipped = saved.equipped;
+  if (isAxeId(data.equipped)) {
+    progress.equipped = data.equipped;
   } else {
     progress.equipped = strongestHeld(progress);
   }
-  const had = new Set();
-  if (Array.isArray(saved.had)) {
-    for (const id of saved.had) {
-      if (typeof id === "string" && Object.hasOwn(progress.axes, id)) had.add(id);
+  const had = new Set<CraftedAxeId>();
+  if (Array.isArray(data.had)) {
+    for (const id of data.had) {
+      if (isCraftedAxeId(id)) had.add(id);
     }
   }
-  for (const [id, count] of Object.entries(progress.axes)) {
+  for (const [id, count] of entries(progress.axes)) {
     if (count > 0) had.add(id);
   }
   progress.had = [...had];
   return progress;
 }
 
-export function loadProgress() {
+export function loadProgress(): Progress {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = saveStore.load();
     return createProgress(raw ? JSON.parse(raw) : null);
   } catch {
     return createProgress(null);
   }
 }
 
-export function saveProgress(progress) {
+export function saveProgress(progress: Progress): void {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(progress));
+    saveStore.save(JSON.stringify(progress));
   } catch {
     // Private mode and full disks should not stop the shift.
   }
 }
 
-export function ticketsHeld(progress, axeId) {
+export function ticketsHeld(progress: Progress, axeId: AxeId): number {
   if (axeId === "simple") return Infinity;
   return progress.axes[axeId] ?? 0;
 }
 
-export function oreFound(progress, oreId) {
+export function oreFound(progress: Progress, oreId: OreId): boolean {
   if ((progress.found ?? []).includes(oreId)) return true;
   return (progress.ore[oreId] ?? 0) > 0;
 }
 
-export function noteOreFound(progress, oreId) {
-  if (!ORES.some((ore) => ore.id === oreId)) return;
+export function noteOreFound(progress: Progress, oreId: OreId): void {
+  if (!isOreId(oreId)) return;
   if (!Array.isArray(progress.found)) progress.found = [];
   if (!progress.found.includes(oreId)) progress.found.push(oreId);
 }
 
-export function axeFound(progress, axeId) {
+export function axeFound(progress: Progress, axeId: AxeId): boolean {
   if (axeId === "simple") return true;
   if ((progress.had ?? []).includes(axeId)) return true;
   return ticketsHeld(progress, axeId) >= 1;
 }
 
-function legacyCanEnter(progress, site) {
+function legacyCanEnter(progress: Progress, site: Site): boolean {
   if (site.tickets.includes("simple")) return true;
   const primary = axeById(site.tickets[0]);
   const vein = new Set(Object.keys(primary.drops));
@@ -164,11 +313,11 @@ function legacyCanEnter(progress, site) {
   return false;
 }
 
-function legacyReachable(progress) {
+function legacyReachable(progress: Progress): SiteId[] {
   return SITES.filter((site) => legacyCanEnter(progress, site)).map((site) => site.id);
 }
 
-function strongestHeld(progress) {
+function strongestHeld(progress: Progress): AxeId {
   for (let index = PICKAXES.length - 1; index >= 0; index -= 1) {
     const id = PICKAXES[index].id;
     if (id !== "simple" && ticketsHeld(progress, id) >= 1) return id;
@@ -176,43 +325,43 @@ function strongestHeld(progress) {
   return "simple";
 }
 
-export function isUnlocked(progress, siteId) {
+export function isUnlocked(progress: Progress, siteId: SiteId): boolean {
   if (siteId === "quarry") return true;
   return (progress.unlocked ?? []).includes(siteId);
 }
 
-export function canPayUnlock(progress, siteId) {
+export function canPayUnlock(progress: Progress, siteId: SiteId): boolean {
   const site = siteById(siteId);
   if (!site?.cost || isUnlocked(progress, siteId)) return false;
-  return Object.entries(site.cost).every(([id, need]) => progress.ore[id] >= need);
+  return entries(site.cost).every(([id, need]) => progress.ore[id] >= need);
 }
 
-export function unlockSite(progress, siteId) {
+export function unlockSite(progress: Progress, siteId: SiteId): boolean {
   if (!canPayUnlock(progress, siteId)) return false;
   const site = siteById(siteId);
-  for (const [id, need] of Object.entries(site.cost)) progress.ore[id] -= need;
+  for (const [id, need] of entries(site.cost ?? {})) progress.ore[id] -= need;
   progress.unlocked.push(site.id);
   saveProgress(progress);
   return true;
 }
 
-export function equip(progress, axeId) {
+export function equip(progress: Progress, axeId: AxeId): boolean {
   if (!axeById(axeId) || ticketsHeld(progress, axeId) < 1) return false;
   progress.equipped = axeId;
   saveProgress(progress);
   return true;
 }
 
-export function canEnter(progress, siteId) {
+export function canEnter(progress: Progress, siteId: SiteId): boolean {
   if (!isUnlocked(progress, siteId)) return false;
   return ticketsHeld(progress, progress.equipped || "simple") >= 1;
 }
 
-export function openSites(progress) {
+export function openSites(progress: Progress): Site[] {
   return SITES.filter((site) => isUnlocked(progress, site.id));
 }
 
-export function enterSite(progress, siteId) {
+export function enterSite(progress: Progress, siteId: SiteId): EnteredSite | null {
   if (!canEnter(progress, siteId)) return null;
   const site = siteById(siteId);
   const ticket = progress.equipped || "simple";
@@ -222,18 +371,18 @@ export function enterSite(progress, siteId) {
   return { ...site, ticket };
 }
 
-export function canForge(progress, axeId) {
+export function canForge(progress: Progress, axeId: AxeId): boolean {
   const axe = axeById(axeId);
   if (!axe?.cost) return false;
-  if (!Object.entries(axe.cost).every(([id, need]) => progress.ore[id] >= need)) return false;
-  return Object.entries(axe.spendAxes ?? {}).every(([id, need]) => ticketsHeld(progress, id) >= need);
+  if (!entries(axe.cost).every(([id, need]) => progress.ore[id] >= need)) return false;
+  return entries(axe.spendAxes ?? {}).every(([id, need]) => ticketsHeld(progress, id) >= need);
 }
 
-export function forge(progress, axeId) {
-  if (!canForge(progress, axeId)) return false;
+export function forge(progress: Progress, axeId: AxeId): boolean {
+  if (axeId === "simple" || !canForge(progress, axeId)) return false;
   const axe = axeById(axeId);
-  for (const [id, need] of Object.entries(axe.cost)) progress.ore[id] -= need;
-  for (const [id, need] of Object.entries(axe.spendAxes ?? {})) progress.axes[id] -= need;
+  for (const [id, need] of entries(axe.cost ?? {})) progress.ore[id] -= need;
+  for (const [id, need] of entries(axe.spendAxes ?? {})) progress.axes[id] -= need;
   progress.axes[axeId] += 1;
   if (!Array.isArray(progress.had)) progress.had = [];
   if (!progress.had.includes(axeId)) progress.had.push(axeId);
@@ -241,32 +390,32 @@ export function forge(progress, axeId) {
   return true;
 }
 
-export function rollOre(drops, rng) {
+export function rollOre(drops: Drops, rng: Rng): OreId {
   let roll = rng() * 100;
-  const entries = Object.entries(drops);
-  for (const [id, weight] of entries) {
+  const weights = entries(drops);
+  for (const [id, weight] of weights) {
     roll -= weight;
     if (roll < 0) return id;
   }
-  return entries[entries.length - 1][0];
+  return weights[weights.length - 1][0];
 }
 
-export function orientedCells(type, ores, rotation) {
+export function orientedCells(type: PieceType, ores: readonly OreId[], rotation: number): PieceCell[] {
   const shape = SHAPES[type];
   const cells = shape.cells.map(([x, y], index) => ({ x, y, ore: ores[index] }));
   const [px, py] = shape.pivot;
-    for (let turn = 0; turn < rotation; turn += 1) {
-      for (const cell of cells) {
-        const x = px + (py - cell.y);
-        const y = py + (cell.x - px);
-        cell.x = Math.round(x);
-        cell.y = Math.round(y);
-      }
+  for (let turn = 0; turn < rotation; turn += 1) {
+    for (const cell of cells) {
+      const x = px + (py - cell.y);
+      const y = py + (cell.x - px);
+      cell.x = Math.round(x);
+      cell.y = Math.round(y);
     }
+  }
   return cells;
 }
 
-export function worldCells(piece) {
+export function worldCells(piece: Piece): PieceCell[] {
   return orientedCells(piece.type, piece.ores, piece.r).map((cell) => ({
     x: cell.x + piece.x,
     y: cell.y + piece.y,
@@ -274,7 +423,7 @@ export function worldCells(piece) {
   }));
 }
 
-export function collides(board, cells) {
+export function collides(board: Board, cells: readonly { x: number; y: number }[]): boolean {
   return cells.some((cell) => {
     if (cell.x < 0 || cell.x >= COLS || cell.y >= ROWS) return true;
     if (cell.y < 0) return false;
@@ -282,7 +431,7 @@ export function collides(board, cells) {
   });
 }
 
-function pullType(state) {
+function pullType(state: GameState): PieceType {
   if (state.bag.length === 0) {
     state.bag = BAG.slice();
     for (let i = state.bag.length - 1; i > 0; i -= 1) {
@@ -290,24 +439,24 @@ function pullType(state) {
       [state.bag[i], state.bag[j]] = [state.bag[j], state.bag[i]];
     }
   }
-  return state.bag.pop();
+  return state.bag.pop() as PieceType;
 }
 
-function makePiece(state) {
+function makePiece(state: GameState): Piece {
   const axe = axeById(state.ticket);
   const drops = state.drops ?? axe.drops;
   const ores = [0, 1, 2, 3].map(() => rollOre(drops, state.rng));
   return { type: pullType(state), ores, r: 0, x: 3, y: 0 };
 }
 
-function ensureQueue(state) {
+function ensureQueue(state: GameState): void {
   while (state.queue.length < 1) state.queue.push(makePiece(state));
 }
 
-export function createState(progress, ticket, rng = Math.random, drops = null) {
+export function createState(progress: Progress, ticket: AxeId, rng: Rng = Math.random, drops: Drops | null = null): GameState {
   const axe = axeById(ticket);
   const durability = axe?.durability ?? 1;
-  const state = {
+  const state: GameState = {
     progress,
     ticket,
     drops,
@@ -339,12 +488,13 @@ export function createState(progress, ticket, rng = Math.random, drops = null) {
   return state;
 }
 
-function canMove(state, dx, dy, rotation = state.piece.r) {
-  const probe = { ...state.piece, r: rotation, x: state.piece.x + dx, y: state.piece.y + dy };
+function canMove(state: GameState, dx: number, dy: number): boolean {
+  if (!state.piece) return false;
+  const probe = { ...state.piece, x: state.piece.x + dx, y: state.piece.y + dy };
   return !collides(state.board, worldCells(probe));
 }
 
-function noteShift(state) {
+function noteShift(state: GameState): void {
   if (!state.piece) return;
   if (canMove(state, 0, 1)) return;
   if (state.lockResets < MAX_LOCK_RESETS) {
@@ -353,7 +503,7 @@ function noteShift(state) {
   }
 }
 
-export function tryMove(state, dx, dy, options = {}) {
+export function tryMove(state: GameState, dx: number, dy: number, options: { fall?: boolean } = {}): boolean {
   if (state.status !== "playing" || !state.piece || state.clearLeft > 0) return false;
   if (!canMove(state, dx, dy)) return false;
   state.piece.x += dx;
@@ -363,22 +513,17 @@ export function tryMove(state, dx, dy, options = {}) {
   return true;
 }
 
-export function tryRotate(state, dir) {
+export function tryRotate(state: GameState, dir: 1 | -1): boolean {
   if (state.status !== "playing" || !state.piece || state.clearLeft > 0) return false;
-  const from = state.piece.r;
-  const to = (from + dir + 4) % 4;
-  const kicks = kicksFor(state.piece.type, from, to);
-  for (const [kx, ky] of kicks) {
-    const probe = {
-      ...state.piece,
-      r: to,
-      x: state.piece.x + kx,
-      y: state.piece.y + ky,
-    };
+  const piece = state.piece;
+  const from = piece.r;
+  const to = ((from + dir + 4) % 4) as Rotation;
+  for (const [kx, ky] of kicksFor(piece.type, from, to)) {
+    const probe = { ...piece, r: to, x: piece.x + kx, y: piece.y + ky };
     if (!collides(state.board, worldCells(probe))) {
-      state.piece.r = to;
-      state.piece.x = probe.x;
-      state.piece.y = probe.y;
+      piece.r = to;
+      piece.x = probe.x;
+      piece.y = probe.y;
       noteShift(state);
       return true;
     }
@@ -386,24 +531,30 @@ export function tryRotate(state, dir) {
   return false;
 }
 
-export function mineFullRows(board, wildcards = []) {
-  const wild = new Set(wildcards);
+export function mineFullRows(board: Board, wildcards: readonly OreId[] = []): {
+  board: Board;
+  mined: PieceCell[];
+  moves: FallMove[];
+  rows: MineRow[];
+} {
+  const wild = new Set<Cell>(wildcards);
   const next = board.map((row) => row.slice());
-  const targets = [];
+  const targets: number[] = [];
   for (let y = ROWS - 1; y >= 0; y -= 1) {
     if (next[y].every(Boolean)) targets.push(y);
   }
   if (targets.length === 0) return { board, mined: [], moves: [], rows: [] };
 
-  const mined = [];
-  const rows = [];
+  const mined: PieceCell[] = [];
+  const rows: MineRow[] = [];
   for (const y of targets) {
     const row = next[y];
     const clearAll = row.every((cell) => !wild.has(cell));
-    const cells = [];
+    const cells: PieceCell[] = [];
     for (let x = 0; x < COLS; x += 1) {
-      if (clearAll || wild.has(row[x])) {
-        const cell = { x, y, ore: row[x] };
+      const ore = row[x];
+      if (ore && (clearAll || wild.has(ore))) {
+        const cell = { x, y, ore };
         cells.push(cell);
         mined.push(cell);
         row[x] = null;
@@ -421,8 +572,8 @@ export function mineFullRows(board, wildcards = []) {
   return { board: next, mined, moves, rows };
 }
 
-function payableCounts(mined, clearAll) {
-  const counts = new Map();
+function payableCounts(mined: readonly PieceCell[], clearAll: boolean): Map<OreId, number> {
+  const counts = new Map<OreId, number>();
   for (const cell of mined) counts.set(cell.ore, (counts.get(cell.ore) ?? 0) + 1);
   if (!clearAll || counts.size < 2) return counts;
   let best = 0;
@@ -434,19 +585,20 @@ function payableCounts(mined, clearAll) {
     } else if (count === best) leaders += 1;
   }
   if (leaders !== 1) return new Map();
-  const paid = new Map();
+  const paid = new Map<OreId, number>();
   for (const [ore, count] of counts) {
     if (count === best) paid.set(ore, count);
   }
   return paid;
 }
 
-function fallAbove(board, floor) {
-  const moves = [];
+function fallAbove(board: Board, floor: number): FallMove[] {
+  const moves: FallMove[] = [];
   for (let x = 0; x < COLS; x += 1) {
-    const falling = [];
+    const falling: { y: number; ore: OreId }[] = [];
     for (let y = 0; y <= floor; y += 1) {
-      if (board[y][x]) falling.push({ y, ore: board[y][x] });
+      const ore = board[y][x];
+      if (ore) falling.push({ y, ore });
       board[y][x] = null;
     }
     for (let i = 0; i < falling.length; i += 1) {
@@ -459,17 +611,17 @@ function fallAbove(board, floor) {
   return moves;
 }
 
-function planFrom(mined) {
-  const byRow = new Map();
+function planFrom(mined: readonly PieceCell[]): PieceCell[][] {
+  const byRow = new Map<number, PieceCell[]>();
   for (const cell of mined) {
     const row = byRow.get(cell.y) ?? [];
     row.push(cell);
     byRow.set(cell.y, row);
   }
-  return [...byRow.keys()].sort((a, b) => b - a).map((y) => byRow.get(y));
+  return [...byRow.keys()].sort((a, b) => b - a).map((y) => byRow.get(y) ?? []);
 }
 
-function queueWave(state) {
+function queueWave(state: GameState): boolean {
   const { mined } = mineFullRows(state.board, axeById(state.ticket).wildcards);
   if (mined.length === 0) return false;
   state.clearPlan = planFrom(mined);
@@ -477,7 +629,7 @@ function queueWave(state) {
   return true;
 }
 
-function armBurst(state) {
+function armBurst(state: GameState): GameEvent {
   const cells = state.clearPlan.flat();
   state.clearPhase = "burst";
   state.clearCells = cells.map((cell) => `${cell.x},${cell.y}`);
@@ -491,7 +643,7 @@ function armBurst(state) {
   };
 }
 
-function payout(state, count) {
+function payout(state: GameState, count: number): { total: number; doubled: number } {
   const axe = axeById(state.ticket);
   let total = 0;
   let doubled = 0;
@@ -506,14 +658,15 @@ function payout(state, count) {
   return { total, doubled };
 }
 
-function spawn(state) {
+function spawn(state: GameState): GameEvent[] {
   ensureQueue(state);
-  state.piece = state.queue.shift();
+  const piece = state.queue.shift() ?? null;
+  state.piece = piece;
   ensureQueue(state);
   state.fallAcc = 0;
   state.lockAcc = 0;
   state.lockResets = 0;
-  if (collides(state.board, worldCells(state.piece))) {
+  if (piece && collides(state.board, worldCells(piece))) {
     state.piece = null;
     state.status = "over";
     saveProgress(state.progress);
@@ -522,13 +675,13 @@ function spawn(state) {
   return [];
 }
 
-function settleMine(state) {
+function settleMine(state: GameState): MineEvent | null {
   const axe = axeById(state.ticket);
   const { board, mined, moves, rows } = mineFullRows(state.board, axe.wildcards);
   if (mined.length === 0) return null;
   state.board = board;
   state.falls = moves;
-  const groups = new Map();
+  const groups = new Map<OreId, MineGroup>();
   for (const row of rows) {
     const cells = axe.id === "simple" ? row.mined.filter((cell) => cell.ore === "stone") : row.mined;
     const counts = payableCounts(cells, axe.id === "simple" ? false : row.clearAll);
@@ -560,8 +713,8 @@ function settleMine(state) {
   };
 }
 
-export function resolveClear(state) {
-  const events = [];
+export function resolveClear(state: GameState): GameEvent[] {
+  const events: MineEvent[] = [];
   state.clearCells = [];
   state.clearGone = [];
   state.clearPlan = [];
@@ -574,16 +727,18 @@ export function resolveClear(state) {
   }
   if (events.length === 0) return events;
   const perfect = state.board.every((row) => row.every((cell) => cell === null));
+  const all: GameEvent[] = [...events];
   if (perfect) {
-    events.at(-1).perfect = true;
-    events.push({ type: "perfect" });
+    events[events.length - 1].perfect = true;
+    all.push({ type: "perfect" });
   }
   saveProgress(state.progress);
-  return events;
+  return all;
 }
 
-function lockPiece(state) {
-  const events = [];
+function lockPiece(state: GameState): GameEvent[] {
+  const events: GameEvent[] = [];
+  if (!state.piece) return events;
   const cells = worldCells(state.piece);
   if (cells.some((cell) => cell.y < 0)) {
     state.piece = null;
@@ -609,13 +764,13 @@ function lockPiece(state) {
   return events;
 }
 
-export function hardDrop(state) {
+export function hardDrop(state: GameState): GameEvent[] {
   if (state.status !== "playing" || !state.piece || state.clearLeft > 0) return [];
   while (tryMove(state, 0, 1, { fall: true }));
   return lockPiece(state);
 }
 
-export function queueAction(state, action) {
+export function queueAction(state: GameState, action: Action): { accepted: boolean; events: GameEvent[] } {
   if (state.clearLeft > 0 && state.status === "playing") {
     if (action === "left" || action === "right" || action === "cw" || action === "ccw") {
       state.buffer = action;
@@ -631,14 +786,14 @@ export function queueAction(state, action) {
   return { accepted: false, events: [] };
 }
 
-function applyBuffer(state) {
+function applyBuffer(state: GameState): GameEvent[] {
   const action = state.buffer;
   state.buffer = null;
   if (!action || state.status !== "playing") return [];
   return queueAction(state, action).events;
 }
 
-export function startShift(state) {
+export function startShift(state: GameState): void {
   if (state.status === "playing") return;
   const fresh = state.status === "over";
   state.board = emptyBoard();
@@ -667,7 +822,7 @@ export function startShift(state) {
   spawn(state);
 }
 
-export function resetProgress(progress) {
+export function resetProgress(progress: Progress): void {
   const sound = progress.sound;
   const fresh = createProgress(null);
   progress.axes = fresh.axes;
@@ -682,7 +837,7 @@ export function resetProgress(progress) {
   saveProgress(progress);
 }
 
-function finishClear(state, events) {
+function finishClear(state: GameState, events: GameEvent[]): GameEvent[] {
   if (queueWave(state)) {
     state.clearWave += 1;
     events.push(armBurst(state));
@@ -696,8 +851,8 @@ function finishClear(state, events) {
   return events;
 }
 
-export function tick(state, dt) {
-  const events = [];
+export function tick(state: GameState, dt: number): GameEvent[] {
+  const events: GameEvent[] = [];
   if (state.status !== "playing") return events;
   if (state.clearLeft > 0) {
     state.clearLeft -= dt;

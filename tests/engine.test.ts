@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { ORES, PICKAXES, SITES, axeById, gravityForSpent, durabilitySpent, CLEAR_BURST, CLEAR_FALL, CLEAR_LAND } from "../src/data.js";
+import { test } from "vitest";
+import { ORES, PICKAXES, SITES, axeById, gravityForSpent, durabilitySpent, CLEAR_BURST, CLEAR_FALL, CLEAR_LAND } from "../src/core/data";
+import type { OreId } from "../src/core/data";
 import {
   canEnter,
   canForge,
@@ -16,12 +17,15 @@ import {
   orientedCells,
   oreFound,
   noteOreFound,
+  loadProgress,
   resolveClear,
+  saveProgress,
+  setSaveStore,
   rollOre,
   startShift,
   tick,
   tryMove,
-} from "../src/engine.js";
+} from "../src/core/engine";
 
 test("every vein sums to 100 and the opening tables match the brief", () => {
   for (const axe of PICKAXES) {
@@ -33,10 +37,10 @@ test("every vein sums to 100 and the opening tables match the brief", () => {
   assert.equal(rollOre(PICKAXES[0].drops, () => 0.99), "coal");
   assert.deepEqual(PICKAXES[1].drops, { stone: 80, copper: 20 });
   assert.deepEqual(PICKAXES[2].drops, { stone: 35, copper: 50, tin: 15 });
-  assert.deepEqual(PICKAXES.find((axe) => axe.id === "bronze").drops, { stone: 12, copper: 35, tin: 23, iron: 30 });
-  assert.deepEqual(PICKAXES.find((axe) => axe.id === "iron").drops, { stone: 30, copper: 10, tin: 30, coal: 30 });
-  assert.deepEqual(PICKAXES.find((axe) => axe.id === "steel").drops, { stone: 8, copper: 14, tin: 14, iron: 24, coal: 25, silver: 15 });
-  assert.deepEqual(PICKAXES.find((axe) => axe.id === "silver").drops, { copper: 10, tin: 12, iron: 21, coal: 12, silver: 40, gold: 5 });
+  assert.deepEqual(axeById("bronze").drops, { stone: 12, copper: 35, tin: 23, iron: 30 });
+  assert.deepEqual(axeById("iron").drops, { stone: 30, copper: 10, tin: 30, coal: 30 });
+  assert.deepEqual(axeById("steel").drops, { stone: 8, copper: 14, tin: 14, iron: 24, coal: 25, silver: 15 });
+  assert.deepEqual(axeById("silver").drops, { copper: 10, tin: 12, iron: 21, coal: 12, silver: 40, gold: 5 });
 });
 
 test("forge costs keep Melvor bar ratios", () => {
@@ -45,8 +49,8 @@ test("forge costs keep Melvor bar ratios", () => {
   assert.deepEqual(byId.copper.cost, { copper: 40 });
   assert.deepEqual(byId.bronze.cost, { copper: 40, tin: 40 });
   assert.ok(PICKAXES.findIndex((axe) => axe.id === "bronze") < PICKAXES.findIndex((axe) => axe.id === "iron"));
-  assert.equal(SITES.find((site) => site.tickets.includes("bronze")).id, "iron");
-  assert.equal(byId.steel.cost.coal, byId.steel.cost.iron * 2);
+  assert.equal(SITES.find((site) => site.tickets.includes("bronze"))?.id, "iron");
+  assert.equal(byId.steel.cost?.coal, (byId.steel.cost?.iron ?? 0) * 2);
   assert.deepEqual(byId.silver.cost, { silver: 40 });
   assert.deepEqual(byId.silver.spendAxes, { steel: 1 });
   assert.deepEqual(byId.mythril.cost, { silver: 1000, stone: 1000 });
@@ -64,6 +68,21 @@ test("forging silver spends a steel pickaxe", () => {
   assert.equal(progress.ore.silver, 0);
   assert.equal(progress.axes.steel, 0);
   assert.equal(progress.axes.silver, 1);
+});
+
+test("the save goes through whichever store is plugged in", () => {
+  let saved: string | null = null;
+  setSaveStore({ load: () => saved, save: (json) => { saved = json; } });
+  const progress = createProgress(null);
+  progress.ore.copper = 12;
+  progress.axes.stone = 2;
+  saveProgress(progress);
+  const loaded = loadProgress();
+  assert.equal(loaded.ore.copper, 12);
+  assert.equal(loaded.axes.stone, 2);
+  assert.ok(loaded.found.includes("copper"));
+  setSaveStore({ load: () => "not json", save: () => {} });
+  assert.equal(loadProgress().ore.copper, 0);
 });
 
 test("found ores stick after spending", () => {
@@ -151,6 +170,7 @@ test("entering spends the equipped pickaxe and keeps the site vein", () => {
   progress.unlocked = ["quarry", "copper"];
   assert.equal(equip(progress, "iron"), true);
   const entered = enterSite(progress, "copper");
+  assert.ok(entered);
   assert.equal(entered.ticket, "iron");
   assert.equal(progress.axes.iron, 0);
   assert.equal(progress.axes.stone, 0);
@@ -431,19 +451,21 @@ test("each pickaxe wildcards different ores", () => {
 });
 
 test("ores rotate with the mino and four turns restore the piece", () => {
-  const ores = ["a", "b", "c", "d"];
+  const ores: OreId[] = ["stone", "copper", "tin", "iron"];
   const start = orientedCells("T", ores, 0);
   const turned = orientedCells("T", ores, 1);
-  const top = start.find((cell) => cell.ore === "a");
-  const moved = turned.find((cell) => cell.ore === "a");
+  const top = start.find((cell) => cell.ore === "stone");
+  const moved = turned.find((cell) => cell.ore === "stone");
+  assert.ok(top && moved);
   assert.equal(moved.x, top.x + 1);
   assert.equal(moved.y, top.y + 1);
   const square = orientedCells("O", ores, 0);
   const spun = orientedCells("O", ores, 1);
-  const oreA = square.find((cell) => cell.ore === "a");
-  const oreMoved = spun.find((cell) => cell.ore === "a");
+  const oreA = square.find((cell) => cell.ore === "stone");
+  const oreMoved = spun.find((cell) => cell.ore === "stone");
+  assert.ok(oreA && oreMoved);
   assert.notDeepEqual([oreMoved.x, oreMoved.y], [oreA.x, oreA.y]);
-  for (const type of ["T", "J", "L", "S", "Z", "I", "O"]) {
+  for (const type of ["T", "J", "L", "S", "Z", "I", "O"] as const) {
     const base = orientedCells(type, ores, 0);
     const full = orientedCells(type, ores, 4);
     assert.deepEqual(

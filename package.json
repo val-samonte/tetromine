@@ -4,13 +4,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
-    "test": "node --test tests/engine.test.js"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^7.0.2",
     "vite": "^8.3.0",
+    "vitest": "^5.0.1",
     "wrangler": "^4.136.3"
   }
 }

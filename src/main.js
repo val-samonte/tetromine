@@ -14,7 +14,7 @@ import {
   siteById,
   siteForTicket,
   SITES,
-} from "./data.js";
+} from "./core/data";
 import {
   canEnter,
   canForge,
@@ -34,7 +34,7 @@ import {
   startShift,
   tick,
   unlockSite,
-} from "./engine.js";
+} from "./core/engine";
 import { createView } from "./view.js";
 import { runCurtain } from "./curtain.js";
 
