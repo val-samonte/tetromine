@@ -38,6 +38,7 @@ export function createProgress(saved) {
   const progress = {
     axes: emptyAxes(),
     ore: Object.fromEntries(ORES.map((item) => [item.id, 0])),
+    found: [],
     bestScore: 0,
     mined: 0,
     sound: true,
@@ -65,6 +66,16 @@ export function createProgress(saved) {
       if (Number.isFinite(value) && value >= 0) progress.ore[item.id] = Math.floor(value);
     }
   }
+  const found = new Set();
+  if (Array.isArray(saved.found)) {
+    for (const id of saved.found) {
+      if (typeof id === "string" && ORES.some((ore) => ore.id === id)) found.add(id);
+    }
+  }
+  for (const item of ORES) {
+    if (progress.ore[item.id] > 0) found.add(item.id);
+  }
+  progress.found = [...found];
   if (Number.isFinite(saved.bestScore) && saved.bestScore > 0) {
     progress.bestScore = Math.floor(saved.bestScore);
   }
@@ -119,6 +130,43 @@ export function saveProgress(progress) {
 export function ticketsHeld(progress, axeId) {
   if (axeId === "simple") return Infinity;
   return progress.axes[axeId] ?? 0;
+}
+
+export function oreFound(progress, oreId) {
+  if ((progress.found ?? []).includes(oreId)) return true;
+  return (progress.ore[oreId] ?? 0) > 0;
+}
+
+export function noteOreFound(progress, oreId) {
+  if (!ORES.some((ore) => ore.id === oreId)) return;
+  if (!Array.isArray(progress.found)) progress.found = [];
+  if (!progress.found.includes(oreId)) progress.found.push(oreId);
+}
+
+export function axeFound(progress, axeId) {
+  if (axeId === "simple") return true;
+  if ((progress.had ?? []).includes(axeId)) return true;
+  return ticketsHeld(progress, axeId) >= 1;
+}
+
+/** Known unlock costs are all affordable (unknown ores ignored). */
+export function knownUnlockReady(progress, siteId) {
+  const site = siteById(siteId);
+  if (!site?.cost || isUnlocked(progress, siteId)) return false;
+  const known = Object.entries(site.cost).filter(([id]) => oreFound(progress, id));
+  if (known.length === 0) return false;
+  return known.every(([id, need]) => progress.ore[id] >= need);
+}
+
+/** Known forge costs are all affordable (unknown ores/axes ignored). */
+export function knownForgeReady(progress, axeId) {
+  const axe = axeById(axeId);
+  if (!axe?.cost) return false;
+  const knownOre = Object.entries(axe.cost).filter(([id]) => oreFound(progress, id));
+  const knownAxe = Object.entries(axe.spendAxes ?? {}).filter(([id]) => axeFound(progress, id));
+  if (knownOre.length === 0 && knownAxe.length === 0) return false;
+  if (!knownOre.every(([id, need]) => progress.ore[id] >= need)) return false;
+  return knownAxe.every(([id, need]) => ticketsHeld(progress, id) >= need);
 }
 
 function legacyCanEnter(progress, site) {
@@ -526,6 +574,7 @@ function settleMine(state) {
     for (const [ore, count] of counts) {
       const pay = payout(state, count);
       state.progress.ore[ore] += pay.total;
+      noteOreFound(state.progress, ore);
       state.runOre[ore] = (state.runOre[ore] ?? 0) + pay.total;
       state.progress.mined += count;
       const group = groups.get(ore) ?? { ore, amount: 0, doubled: 0, rows: 0 };
@@ -536,7 +585,10 @@ function settleMine(state) {
     }
   }
   for (const group of groups.values()) state.runResources += group.amount;
-  state.durabilityLeft = Math.max(0, (state.durabilityLeft ?? 0) - 1);
+  const strong = new Set(axe.wildcards);
+  const yieldedStrong = [...groups.keys()].some((ore) => strong.has(ore));
+  const drain = yieldedStrong ? 1 : 2;
+  state.durabilityLeft = Math.max(0, (state.durabilityLeft ?? 0) - drain);
   saveProgress(state.progress);
   return {
     type: "mine",
@@ -664,6 +716,7 @@ export function resetProgress(progress) {
   const fresh = createProgress(null);
   progress.axes = fresh.axes;
   progress.ore = fresh.ore;
+  progress.found = fresh.found;
   progress.bestScore = 0;
   progress.mined = 0;
   progress.sound = sound;

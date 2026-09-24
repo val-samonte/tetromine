@@ -27,7 +27,8 @@ import {
   isUnlocked,
   loadProgress,
   ticketsHeld,
-  openSites,
+  oreFound,
+  axeFound,
   queueAction,
   resetProgress,
   saveProgress,
@@ -50,14 +51,12 @@ const settingsModal = document.querySelector("#settings-modal");
 const endModal = document.querySelector("#end-modal");
 const siteModal = document.querySelector("#site-modal");
 const equipAskModal = document.querySelector("#equip-ask-modal");
-const unlockAskModal = document.querySelector("#unlock-ask-modal");
 const equipPromptModal = document.querySelector("#equip-prompt-modal");
 const forgeAskModal = document.querySelector("#forge-ask-modal");
 const leaveAskModal = document.querySelector("#leave-ask-modal");
 let equipPromptSeen = true;
 let equipPromptSiteId = null;
 let equipAskId = null;
-let unlockAskId = null;
 let forgeAskId = null;
 
 const RAINBOW = ["#ff0040", "#ff7a00", "#ffe600", "#00e676", "#00b0ff", "#7c4dff", "#ff4081"];
@@ -109,6 +108,63 @@ function craftableAxes() {
   return PICKAXES.filter((axe) => (
     progress.axes[axe.id] === 0 && canForge(progress, axe.id) && !had.has(axe.id)
   ));
+}
+
+function siteRevealed(site) {
+  if (isUnlocked(progress, site.id) || !site.cost) return true;
+  return Object.keys(site.cost).every((id) => oreFound(progress, id));
+}
+
+function axeRevealed(axe) {
+  if (!axe.cost) return false;
+  if (progress.axes[axe.id] > 0) return true;
+  if (!Object.keys(axe.cost).every((id) => oreFound(progress, id))) return false;
+  return Object.keys(axe.spendAxes ?? {}).every((id) => axeFound(progress, id));
+}
+
+function siteRainbow(site) {
+  if (!siteRevealed(site)) return false;
+  if (isUnlocked(progress, site.id)) return !progress.played.includes(site.id);
+  return true;
+}
+
+function axeRainbow(axe) {
+  if (!axeRevealed(axe)) return false;
+  if ((progress.had ?? []).includes(axe.id) || progress.axes[axe.id] > 0) return false;
+  return true;
+}
+
+function appendCostRows(copy, cost) {
+  for (const { ore, need } of costEntries(cost)) {
+    if (!oreFound(progress, ore.id)) continue;
+    const row = document.createElement("p");
+    row.className = "cost-row";
+    const swatch = document.createElement("i");
+    swatch.className = "swatch";
+    swatch.style.setProperty("--swatch", ore.fill);
+    const mat = document.createElement("span");
+    mat.textContent = ore.name;
+    const frac = document.createElement("span");
+    frac.className = "frac";
+    frac.textContent = `${progress.ore[ore.id]}/${need}`;
+    row.append(swatch, mat, frac);
+    copy.append(row);
+  }
+}
+
+function appendAxeSpendRows(copy, spendAxes) {
+  for (const { axe: needAxe, need } of axeSpendEntries(spendAxes)) {
+    if (!axeFound(progress, needAxe.id)) continue;
+    const row = document.createElement("p");
+    row.className = "cost-row";
+    const mat = document.createElement("span");
+    mat.textContent = needAxe.name;
+    const frac = document.createElement("span");
+    frac.className = "frac";
+    frac.textContent = `${ticketsHeld(progress, needAxe.id)}/${need}`;
+    row.append(mat, frac);
+    copy.append(row);
+  }
 }
 
 function rainbowLabel(text) {
@@ -206,8 +262,13 @@ function startRainbow() {
   }, RAINBOW_MS);
 }
 
-function unseenSites() {
-  return openSites(progress).filter((site) => !progress.played.includes(site.id));
+function craftNavOpen() {
+  return PICKAXES.some((axe) => axe.cost && axeRevealed(axe));
+}
+
+function itemsNavOpen() {
+  if ((progress.found ?? []).length > 0) return true;
+  return PICKAXES.some((axe) => axe.id !== "simple" && progress.axes[axe.id] > 0);
 }
 
 function setDockText(button, text, rainbow) {
@@ -218,10 +279,15 @@ function setDockText(button, text, rainbow) {
 function paintNav() {
   const play = document.querySelector("[data-dock='sites']");
   const craft = document.querySelector("[data-dock='craft']");
+  const items = document.querySelector("[data-dock='items']");
+  const craftOpen = craftNavOpen();
+  const itemsOpen = itemsNavOpen();
+  craft.hidden = !craftOpen;
+  items.hidden = !itemsOpen;
   const onPlay = play.getAttribute("aria-current") === "page";
   const onCraft = craft.getAttribute("aria-current") === "page";
-  setDockText(play, "Play", !onPlay && unseenSites().length > 0);
-  setDockText(craft, "Craft", !onCraft && craftableAxes().length > 0);
+  setDockText(play, "Play", !onPlay && SITES.some((site) => siteRainbow(site)));
+  setDockText(craft, "Craft", craftOpen && !onCraft && PICKAXES.some((axe) => axeRainbow(axe)));
 }
 
 function syncRainbow() {
@@ -231,9 +297,10 @@ function syncRainbow() {
 
 function showScreen(next) {
   closeSiteInfo();
-  closeUnlockAsk();
   closeForgeAsk();
   closeLeaveAsk();
+  if (next === "craft" && !craftNavOpen()) next = "sites";
+  if (next === "items" && !itemsNavOpen()) next = "sites";
   if (next !== "craft") rainbowAxes = new Set();
   screen = next;
   document.querySelectorAll("[data-screen]").forEach((section) => {
@@ -305,6 +372,17 @@ function commit(next, options) {
       url = route.path;
       historyMode = "none";
     }
+  }
+
+  if (target === "craft" && !craftNavOpen()) {
+    target = "sites";
+    url = "/sites";
+    if (historyMode === "none") historyMode = "replace";
+  }
+  if (target === "items" && !itemsNavOpen()) {
+    target = "sites";
+    url = "/sites";
+    if (historyMode === "none") historyMode = "replace";
   }
 
   if (target === screen && location.pathname === url && historyMode !== "replace") {
@@ -493,6 +571,7 @@ function openSiteInfo(siteId) {
     const unlock = document.createElement("ul");
     unlock.className = "info-ores";
     for (const { ore, need } of costEntries(site.cost)) {
+      if (!oreFound(progress, ore.id)) continue;
       const item = document.createElement("li");
       const swatch = document.createElement("i");
       swatch.className = "swatch";
@@ -505,7 +584,7 @@ function openSiteInfo(siteId) {
       item.append(swatch, name, frac);
       unlock.append(item);
     }
-    parts.push(unlockLabel, unlock);
+    if (unlock.childElementCount > 0) parts.push(unlockLabel, unlock);
   }
 
   const resourceLabel = document.createElement("p");
@@ -571,11 +650,15 @@ function activeSite() {
 }
 
 function renderSites() {
-  const unlockable = SITES.toReversed().filter((site) => canPayUnlock(progress, site.id));
+  const unlockable = SITES.toReversed().filter((site) => siteRevealed(site) && canPayUnlock(progress, site.id));
   const unlocked = SITES.toReversed().filter((site) => isUnlocked(progress, site.id));
-  const locked = SITES.filter((site) => !isUnlocked(progress, site.id) && !canPayUnlock(progress, site.id));
+  const locked = SITES.filter((site) => (
+    siteRevealed(site) && !isUnlocked(progress, site.id) && !canPayUnlock(progress, site.id)
+  ));
   fillSiteList(document.querySelector("#site-open"), [...unlockable, ...unlocked]);
   fillSiteList(document.querySelector("#site-locked"), locked);
+  paintNav();
+  syncRainbow();
 }
 
 function fillSiteList(list, sites) {
@@ -583,6 +666,7 @@ function fillSiteList(list, sites) {
   for (const site of sites) {
     const unlocked = isUnlocked(progress, site.id);
     const payable = canPayUnlock(progress, site.id);
+    const rainbow = siteRainbow(site);
     const item = document.createElement("li");
     if (!unlocked && !payable) item.classList.add("dim");
     const copy = document.createElement("div");
@@ -590,7 +674,7 @@ function fillSiteList(list, sites) {
     head.className = "site-head";
     const name = document.createElement("h2");
     name.className = "site-name";
-    if (payable || (unlocked && !progress.played.includes(site.id))) name.append(rainbowLabel(site.name));
+    if (rainbow) name.append(rainbowLabel(site.name));
     else name.textContent = site.name;
     const info = document.createElement("button");
     info.type = "button";
@@ -600,22 +684,7 @@ function fillSiteList(list, sites) {
     info.append(infoMark());
     head.append(name, info);
     copy.append(head, veinBar(axeById(site.tickets[0]).drops));
-    if (!unlocked && site.cost) {
-      for (const { ore, need } of costEntries(site.cost)) {
-        const row = document.createElement("p");
-        row.className = "cost-row";
-        const swatch = document.createElement("i");
-        swatch.className = "swatch";
-        swatch.style.setProperty("--swatch", ore.fill);
-        const mat = document.createElement("span");
-        mat.textContent = ore.name;
-        const frac = document.createElement("span");
-        frac.className = "frac";
-        frac.textContent = `${progress.ore[ore.id]}/${need}`;
-        row.append(swatch, mat, frac);
-        copy.append(row);
-      }
-    }
+    if (!unlocked && site.cost) appendCostRows(copy, site.cost);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "solid-btn";
@@ -626,7 +695,7 @@ function fillSiteList(list, sites) {
     } else {
       button.dataset.unlock = site.id;
       button.textContent = "Unlock";
-      button.disabled = !canPayUnlock(progress, site.id);
+      button.disabled = !payable;
     }
     item.append(copy, button);
     list.append(item);
@@ -635,24 +704,25 @@ function fillSiteList(list, sites) {
 }
 
 function renderCraft() {
-  const axes = PICKAXES.filter((axe) => axe.cost);
-  const fresh = new Set(craftableAxes().map((axe) => axe.id));
-  fillAxeList(document.querySelector("#axe-list"), axes.toReversed().filter((axe) => canForge(progress, axe.id)), fresh);
-  fillAxeList(document.querySelector("#axe-locked"), axes.filter((axe) => !canForge(progress, axe.id)), fresh);
+  const axes = PICKAXES.filter((axe) => axe.cost && axeRevealed(axe));
+  fillAxeList(document.querySelector("#axe-list"), axes.toReversed().filter((axe) => canForge(progress, axe.id)));
+  fillAxeList(document.querySelector("#axe-locked"), axes.filter((axe) => !canForge(progress, axe.id)));
   paintNav();
   syncRainbow();
 }
 
-function fillAxeList(list, axes, fresh) {
+function fillAxeList(list, axes) {
   list.replaceChildren();
   for (const axe of axes) {
+    const ready = canForge(progress, axe.id);
+    const rainbow = axeRainbow(axe);
     const item = document.createElement("li");
-    if (!canForge(progress, axe.id)) item.classList.add("dim");
+    if (!ready) item.classList.add("dim");
     const copy = document.createElement("div");
     const name = document.createElement("h2");
     name.className = "axe-name";
-    const label = fresh.has(axe.id) ? rainbowLabel(axe.name) : document.createElement("span");
-    if (!fresh.has(axe.id)) label.textContent = axe.name;
+    const label = rainbow ? rainbowLabel(axe.name) : document.createElement("span");
+    if (!rainbow) label.textContent = axe.name;
     const head = document.createElement("div");
     head.className = "site-head";
     const info = document.createElement("button");
@@ -670,37 +740,14 @@ function fillAxeList(list, axes, fresh) {
     }
     name.prepend(head);
     copy.append(name);
-    for (const { ore, need } of costEntries(axe.cost)) {
-      const row = document.createElement("p");
-      row.className = "cost-row";
-      const swatch = document.createElement("i");
-      swatch.className = "swatch";
-      swatch.style.setProperty("--swatch", ore.fill);
-      const mat = document.createElement("span");
-      mat.textContent = ore.name;
-      const frac = document.createElement("span");
-      frac.className = "frac";
-      frac.textContent = `${progress.ore[ore.id]}/${need}`;
-      row.append(swatch, mat, frac);
-      copy.append(row);
-    }
-    for (const { axe: needAxe, need } of axeSpendEntries(axe.spendAxes)) {
-      const row = document.createElement("p");
-      row.className = "cost-row";
-      const mat = document.createElement("span");
-      mat.textContent = needAxe.name;
-      const frac = document.createElement("span");
-      frac.className = "frac";
-      frac.textContent = `${ticketsHeld(progress, needAxe.id)}/${need}`;
-      row.append(mat, frac);
-      copy.append(row);
-    }
+    appendCostRows(copy, axe.cost);
+    appendAxeSpendRows(copy, axe.spendAxes);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "solid-btn";
     button.dataset.axe = axe.id;
     button.textContent = `Forge ${axe.name}`;
-    button.disabled = !canForge(progress, axe.id);
+    button.disabled = !ready;
     item.append(copy, button);
     list.append(item);
   }
@@ -857,21 +904,6 @@ function acceptForgeAsk() {
   if (offerForgedEquip(axeId, bare)) return;
   forgeThenEnter = false;
   if (site) begin(site.id);
-}
-
-function openUnlockAsk(siteId) {
-  const site = siteById(siteId);
-  if (!site) return;
-  unlockAskId = site.id;
-  document.querySelector("#unlock-ask-title").textContent = site.name;
-  document.querySelector("#unlock-ask-copy").textContent = `Proceed to ${site.name}?`;
-  unlockAskModal.hidden = false;
-  document.querySelector("#unlock-ask-yes").focus();
-}
-
-function closeUnlockAsk() {
-  unlockAskModal.hidden = true;
-  unlockAskId = null;
 }
 
 function begin(siteId) {
@@ -1153,11 +1185,7 @@ for (const list of document.querySelectorAll("#site-locked, #site-open")) list.a
   if (unlock && !unlock.disabled) {
     audio.unlock();
     if (unlockSite(progress, unlock.dataset.unlock)) {
-      const siteId = unlock.dataset.unlock;
       renderSites();
-      paintNav();
-      syncRainbow();
-      openUnlockAsk(siteId);
     }
     return;
   }
@@ -1204,6 +1232,8 @@ document.querySelector("#settings-erase").addEventListener("click", () => {
   closeSettings();
   hideEnd();
   if (screen === "shaft") go("sites");
+  else if (screen === "craft" && !craftNavOpen()) go("sites", { history: "replace" });
+  else if (screen === "items" && !itemsNavOpen()) go("sites", { history: "replace" });
   else if (screen === "craft") renderCraft();
   else if (screen === "sites") renderSites();
   else if (screen === "items") renderItems();
@@ -1243,21 +1273,6 @@ document.querySelector("#forge-ask-yes").addEventListener("click", acceptForgeAs
 document.querySelector("#forge-ask-no").addEventListener("click", closeForgeAsk);
 forgeAskModal.addEventListener("click", (event) => {
   if (event.target === forgeAskModal) closeForgeAsk();
-});
-document.querySelector("#unlock-ask-yes").addEventListener("click", () => {
-  const siteId = unlockAskId;
-  closeUnlockAsk();
-  if (!siteId) return;
-  if (canEnter(progress, siteId)) begin(siteId);
-  else if (needsEquipPrompt()) openEquipPrompt(siteId);
-  else {
-    equip(progress, "simple");
-    begin(siteId);
-  }
-});
-document.querySelector("#unlock-ask-no").addEventListener("click", closeUnlockAsk);
-unlockAskModal.addEventListener("click", (event) => {
-  if (event.target === unlockAskModal) closeUnlockAsk();
 });
 document.querySelector("#equip-ask-yes").addEventListener("click", () => {
   if (equipAskId) equip(progress, equipAskId);
@@ -1380,14 +1395,13 @@ document.addEventListener("keydown", (event) => {
     if (!equipPromptModal.hidden) closeEquipPrompt();
     else if (!forgeAskModal.hidden) closeForgeAsk();
     else if (!leaveAskModal.hidden) closeLeaveAsk();
-    else if (!unlockAskModal.hidden) closeUnlockAsk();
     else if (!equipAskModal.hidden) closeEquipAsk();
     else if (!siteModal.hidden) closeSiteInfo();
     else if (settingsOpen) closeSettings();
     else if (!endModal.hidden) leaveShaft();
     return;
   }
-  if (settingsOpen || !endModal.hidden || !siteModal.hidden || !equipAskModal.hidden || !equipPromptModal.hidden || !unlockAskModal.hidden || !forgeAskModal.hidden || !leaveAskModal.hidden) return;
+  if (settingsOpen || !endModal.hidden || !siteModal.hidden || !equipAskModal.hidden || !equipPromptModal.hidden || !forgeAskModal.hidden || !leaveAskModal.hidden) return;
   if (event.target.closest("button")) return;
   if (screen !== "shaft" || !state) {
     if (screen === "title" && (event.key === "Enter" || event.key === " ")) {

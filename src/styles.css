@@ -621,8 +621,7 @@ h1, h2, .site-name, .axe-name {
 #equip-prompt-modal,
 #enter-ask-modal,
 #forge-ask-modal,
-#leave-ask-modal,
-#unlock-ask-modal { z-index: 7; }
+#leave-ask-modal { z-index: 7; }
 
 .modal[hidden] { display: none; }
 

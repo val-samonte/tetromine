@@ -4,6 +4,7 @@ import { ORES, PICKAXES, SITES, axeById, gravityForSpent, durabilitySpent, CLEAR
 import {
   canEnter,
   canForge,
+  canPayUnlock,
   createProgress,
   createState,
   enterSite,
@@ -13,6 +14,10 @@ import {
   hardDrop,
   openSites,
   orientedCells,
+  oreFound,
+  noteOreFound,
+  knownUnlockReady,
+  knownForgeReady,
   resolveClear,
   rollOre,
   startShift,
@@ -61,6 +66,31 @@ test("forging silver spends a steel pickaxe", () => {
   assert.equal(progress.ore.silver, 0);
   assert.equal(progress.axes.steel, 0);
   assert.equal(progress.axes.silver, 1);
+});
+
+test("found ores stick after spending, and known costs tease unlock/forge", () => {
+  const progress = createProgress(null);
+  assert.equal(oreFound(progress, "stone"), false);
+  noteOreFound(progress, "stone");
+  progress.ore.stone = 2000;
+  assert.equal(oreFound(progress, "stone"), true);
+  assert.equal(oreFound(progress, "silver"), false);
+  assert.equal(canPayUnlock(progress, "gold"), false);
+  assert.equal(knownUnlockReady(progress, "gold"), true);
+
+  progress.ore.stone = 0;
+  const reloaded = createProgress(progress);
+  assert.equal(oreFound(reloaded, "stone"), true);
+  assert.equal(oreFound(reloaded, "silver"), false);
+
+  const forgeProgress = createProgress(null);
+  noteOreFound(forgeProgress, "silver");
+  forgeProgress.ore.silver = 40;
+  assert.equal(canForge(forgeProgress, "silver"), false);
+  assert.equal(knownForgeReady(forgeProgress, "silver"), true);
+  forgeProgress.had = ["steel"];
+  forgeProgress.axes.steel = 0;
+  assert.equal(knownForgeReady(forgeProgress, "silver"), false);
 });
 
 test("a site unlocks by spending ore, and enter spends the equipped pickaxe", () => {
@@ -445,14 +475,14 @@ test("a piece cannot walk through the wall", () => {
 
 test("durability ranks steel highest and stone lowest", () => {
   const byId = Object.fromEntries(PICKAXES.map((axe) => [axe.id, axe]));
-  assert.equal(byId.steel.durability, 80);
-  assert.equal(byId.mythril.durability, 67);
-  assert.equal(byId.silver.durability, 66);
-  assert.equal(byId.iron.durability, 56);
-  assert.equal(byId.bronze.durability, 48);
-  assert.equal(byId.copper.durability, 40);
-  assert.equal(byId.simple.durability, 34);
-  assert.equal(byId.stone.durability, 18);
+  assert.equal(byId.steel.durability, 160);
+  assert.equal(byId.mythril.durability, 134);
+  assert.equal(byId.silver.durability, 132);
+  assert.equal(byId.iron.durability, 112);
+  assert.equal(byId.bronze.durability, 96);
+  assert.equal(byId.copper.durability, 80);
+  assert.equal(byId.simple.durability, 68);
+  assert.equal(byId.stone.durability, 36);
   assert.ok(byId.steel.durability > byId.mythril.durability);
   assert.ok(byId.mythril.durability > byId.silver.durability);
   assert.ok(byId.silver.durability > byId.iron.durability);
@@ -462,17 +492,28 @@ test("durability ranks steel highest and stone lowest", () => {
   assert.ok(byId.simple.durability > byId.stone.durability);
 });
 
-test("a mine evaluation spends one durability even for many rows", () => {
+test("a mine evaluation spends one durability when strong ore yields", () => {
   const progress = createProgress(null);
   const state = createState(progress, "stone", () => 0);
-  assert.equal(state.durabilityLeft, 18);
-  assert.equal(state.durabilityMax, 18);
+  assert.equal(state.durabilityLeft, 36);
+  assert.equal(state.durabilityMax, 36);
   state.board[17] = Array(10).fill("stone");
   state.board[18] = Array(10).fill("stone");
   state.board[19] = Array(10).fill("stone");
   resolveClear(state);
-  assert.equal(state.durabilityLeft, 17);
+  assert.equal(state.durabilityLeft, 35);
   assert.equal(state.runOre.stone, 30);
+});
+
+test("a mine evaluation spends two durability when no strong ore yields", () => {
+  const progress = createProgress(null);
+  const state = createState(progress, "bronze", () => 0.5);
+  assert.equal(state.durabilityLeft, 96);
+  state.board[19] = Array(10).fill("stone");
+  resolveClear(state);
+  assert.equal(state.durabilityLeft, 94);
+  assert.equal(state.runOre.stone, 10);
+  assert.equal(state.runOre.copper, undefined);
 });
 
 test("fall speed follows durability spent, and empty still plays at max speed", () => {
