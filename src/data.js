@@ -8,7 +8,7 @@
 //
 // Pickaxe recipes use Melvor bar ratios, scaled so a pure row of 10 is the unit:
 // bronze 1 copper : 1 tin, iron bar 1 iron, steel 1 iron : 2 coal,
-// silver bar 1 silver.
+// silver bar 1 silver. Silver also spends one Steel Pickaxe.
 
 export const COLS = 10;
 export const ROWS = 20;
@@ -107,8 +107,9 @@ export const PICKAXES = [
     doubleChance: 0.15,
     wildcards: ["silver"],
     cost: { silver: 40 },
+    spendAxes: { steel: 1 },
     enters: "Gold ore is 5%. Silver 40%, iron 21%, coal 10%, copper 12%, tin 12%.",
-    note: "Melvor silver bar is 1 silver ore. 15% of mined blocks pay double.",
+    note: "Melvor silver bar is 1 silver ore. Needs a Steel Pickaxe. 15% of mined blocks pay double.",
   },
 ];
 
@@ -177,6 +178,14 @@ export function costEntries(cost) {
   }));
 }
 
+export function axeSpendEntries(spendAxes) {
+  if (!spendAxes) return [];
+  return PICKAXES.filter((axe) => spendAxes[axe.id]).map((axe) => ({
+    axe,
+    need: spendAxes[axe.id],
+  }));
+}
+
 // tickets[0] is the vein. cost is the one-time ore spend that unlocks the site.
 // Those costs are double the pickaxe that used to open the site. Quarry stays open.
 export const SITES = [
@@ -226,7 +235,7 @@ export const SITES = [
     id: "gold",
     name: "Gold Reef",
     tickets: ["silver"],
-    cost: { stone: 3000, silver: 80 },
+    cost: { stone: 3000, silver: 200 },
     place: "Gold shows in the wall. Silver is the common metal.",
   },
 ];

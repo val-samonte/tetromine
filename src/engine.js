@@ -200,13 +200,15 @@ export function enterSite(progress, siteId) {
 export function canForge(progress, axeId) {
   const axe = axeById(axeId);
   if (!axe?.cost) return false;
-  return Object.entries(axe.cost).every(([id, need]) => progress.ore[id] >= need);
+  if (!Object.entries(axe.cost).every(([id, need]) => progress.ore[id] >= need)) return false;
+  return Object.entries(axe.spendAxes ?? {}).every(([id, need]) => ticketsHeld(progress, id) >= need);
 }
 
 export function forge(progress, axeId) {
   if (!canForge(progress, axeId)) return false;
   const axe = axeById(axeId);
   for (const [id, need] of Object.entries(axe.cost)) progress.ore[id] -= need;
+  for (const [id, need] of Object.entries(axe.spendAxes ?? {})) progress.axes[id] -= need;
   progress.axes[axeId] += 1;
   if (!Array.isArray(progress.had)) progress.had = [];
   if (!progress.had.includes(axeId)) progress.had.push(axeId);

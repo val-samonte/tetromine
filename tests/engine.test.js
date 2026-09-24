@@ -45,7 +45,20 @@ test("forge costs keep Melvor bar ratios", () => {
   assert.equal(SITES.find((site) => site.tickets.includes("bronze")).id, "iron");
   assert.equal(byId.steel.cost.coal, byId.steel.cost.iron * 2);
   assert.deepEqual(byId.silver.cost, { silver: 40 });
+  assert.deepEqual(byId.silver.spendAxes, { steel: 1 });
   assert.equal(byId.simple.cost, null);
+});
+
+test("forging silver spends a steel pickaxe", () => {
+  const progress = createProgress(null);
+  progress.ore.silver = 40;
+  assert.equal(canForge(progress, "silver"), false);
+  progress.axes.steel = 1;
+  assert.equal(canForge(progress, "silver"), true);
+  assert.equal(forge(progress, "silver"), true);
+  assert.equal(progress.ore.silver, 0);
+  assert.equal(progress.axes.steel, 0);
+  assert.equal(progress.axes.silver, 1);
 });
 
 test("a site unlocks by spending ore, and enter spends the equipped pickaxe", () => {

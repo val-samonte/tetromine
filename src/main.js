@@ -7,6 +7,7 @@ import {
   PICKAXES,
   axeById,
   costEntries,
+  axeSpendEntries,
   dropList,
   siteById,
   siteForTicket,
@@ -675,6 +676,17 @@ function fillAxeList(list, axes, fresh) {
       row.append(swatch, mat, frac);
       copy.append(row);
     }
+    for (const { axe: needAxe, need } of axeSpendEntries(axe.spendAxes)) {
+      const row = document.createElement("p");
+      row.className = "cost-row";
+      const mat = document.createElement("span");
+      mat.textContent = needAxe.name;
+      const frac = document.createElement("span");
+      frac.className = "frac";
+      frac.textContent = `${ticketsHeld(progress, needAxe.id)}/${need}`;
+      row.append(mat, frac);
+      copy.append(row);
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = "solid-btn";
@@ -831,6 +843,7 @@ function acceptForgeAsk() {
   audio.blip(330, 0.06);
   audio.blip(494, 0.08);
   announce(`Forged ${axe.name}.`);
+  settleBrokenEquip();
   const site = activeSite();
   forgeThenEnter = Boolean(site);
   if (offerForgedEquip(axeId, bare)) return;
@@ -1144,6 +1157,7 @@ for (const list of document.querySelectorAll("#axe-list, #axe-locked")) list.add
   audio.blip(494, 0.08);
   const axe = axeById(axeId);
   announce(`Forged ${axe.name}.`);
+  settleBrokenEquip();
   renderCraft();
   offerForgedEquip(axeId, bare);
 });
